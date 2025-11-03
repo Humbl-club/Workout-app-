@@ -1,7 +1,7 @@
 // This file configures and initializes Firebase services using the v9 modular SDK.
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 
 // =================================================================
 //  USER'S FIREBASE CONFIGURATION - APPLIED
@@ -49,3 +49,16 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Connect to local emulators when enabled via env flag
+// Works when Vite defines import.meta.env.VITE_USE_EMULATORS = 'true'
+try {
+  // @ts-ignore bundler injects import.meta.env
+  const useEmu = (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_USE_EMULATORS) || (process as any)?.env?.VITE_USE_EMULATORS;
+  if (useEmu === 'true' || useEmu === true) {
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099');
+    connectFirestoreEmulator(db, '127.0.0.1', 8080);
+    // eslint-disable-next-line no-console
+    console.info('[Firebase] Connected to local emulators (Auth:9099, Firestore:8080)');
+  }
+} catch {}

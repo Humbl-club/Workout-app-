@@ -151,4 +151,44 @@ export interface ChatMessage {
 // User Profile types
 export interface UserProfile {
     lastProgressionApplied?: any; // Firestore Timestamp
+    bodyMetrics?: BodyMetrics;
+    goals?: UserGoal[];
+}
+
+// Body Metrics
+export interface BodyMetrics {
+    weight?: number; // in lbs or kg
+    bodyFatPercentage?: number;
+    measurements?: {
+        chest?: number;
+        waist?: number;
+        hips?: number;
+        biceps?: number;
+        thighs?: number;
+    };
+    lastUpdated?: any; // Firestore Timestamp
+}
+
+// User Goals
+export interface UserGoal {
+    id?: string;
+    type: 'workout_count' | 'weight_loss' | 'strength_gain' | 'custom';
+    title: string; // e.g., "Complete 30 workouts"
+    target: number; // e.g., 30
+    current: number; // e.g., 18
+    deadline?: any; // Firestore Timestamp
+    createdAt?: any;
+}
+
+// Personal Records
+export interface PersonalRecord {
+    exercise_name: string;
+    weight: number;
+    reps: number;
+    date: any; // Firestore Timestamp
+    previousBest?: {
+        weight: number;
+        reps: number;
+        date: any;
+    };
 }

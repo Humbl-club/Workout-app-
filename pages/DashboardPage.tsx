@@ -13,30 +13,35 @@ interface DashboardPageProps {
 const isSameDay = (d1: Date, d2: Date) => d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
 const getDayStart = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-const StatCard: React.FC<{ title: string; value: string | number; description: string }> = ({ title, value, description }) => (
-    <div className="bg-stone-800/50 border border-stone-700 p-6 rounded-2xl backdrop-blur-xl shadow-lg">
-        <p className="text-sm font-semibold text-stone-400">{title}</p>
-        <p className="font-syne text-4xl font-extrabold text-white mt-2">{value}</p>
-        <p className="text-xs text-stone-300 mt-1">{description}</p>
+const StatCard: React.FC<{ title: string; value: string | number; description: string; accent?: boolean }> = ({ title, value, description, accent = false }) => (
+    <div className={`bg-[var(--surface)] border rounded-xl p-5 ${accent ? 'border-[var(--accent)]' : 'border-[var(--border)]'}`} style={{ boxShadow: accent ? 'var(--glow-red)' : 'var(--shadow-sm)' }}>
+        <p className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] mb-2">{title}</p>
+        <p className={`font-syne text-4xl font-bold mt-1 mb-1 ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{value}</p>
+        <p className="text-[13px] text-[var(--text-secondary)]">{description}</p>
     </div>
 );
 
 const WeeklyVolumeChart: React.FC<{ data: { day: string; volume: number }[] }> = ({ data }) => {
-    const maxVolume = useMemo(() => Math.max(...data.map(d => d.volume), 1), [data]);
-    
+    const chartData = Array.isArray(data) ? data : [];
+    const maxVolume = useMemo(() => {
+      if (chartData.length === 0) return 1;
+      return Math.max(...chartData.map(d => d.volume), 1);
+    }, [chartData]);
+
     return (
-        <div className="bg-stone-800/50 border border-stone-700 p-6 rounded-2xl backdrop-blur-xl shadow-lg">
-            <h3 className="font-syne text-lg font-bold text-white">Weekly Volume</h3>
-            <div className="mt-4 h-48 flex justify-between items-end gap-2">
-                {data.map(({ day, volume }, index) => (
+        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5" style={{ boxShadow: 'var(--shadow-sm)' }}>
+            <p className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] mb-2">WEEKLY VOLUME</p>
+            <h3 className="font-syne text-xl font-bold text-[var(--text-primary)] mb-5">Training Load</h3>
+            <div className="h-48 flex justify-between items-end gap-3">
+                {chartData.map(({ day, volume }, index) => (
                     <div key={index} className="flex-1 flex flex-col items-center justify-end h-full group">
-                        <div 
-                            className="w-full bg-red-500/10 rounded-t-lg group-hover:bg-red-500 transition-all duration-300 ease-out"
-                            style={{ height: `${(volume / maxVolume) * 100}%` }}
+                        <div
+                            className="w-full bg-[var(--surface-secondary)] rounded-t-lg transition-all duration-300 ease-out relative overflow-hidden"
+                            style={{ height: `${Math.max((volume / maxVolume) * 100, 2)}%` }}
                         >
-                            <div className="w-full h-full bg-red-500 rounded-t-lg transition-all duration-300 ease-out transform scale-y-0 origin-bottom group-hover:scale-y-100" />
+                            <div className="w-full h-full bg-[var(--accent)] rounded-t-lg" />
                         </div>
-                        <p className="text-xs font-semibold text-stone-400 mt-2">{day}</p>
+                        <p className="text-[11px] font-semibold text-[var(--text-tertiary)] mt-2 uppercase">{day}</p>
                     </div>
                 ))}
             </div>
@@ -49,7 +54,8 @@ const KEY_LIFTS = ['squat', 'bench', 'deadlift', 'overhead press', 'ohp'];
 export default function DashboardPage({ logs, plan }: DashboardPageProps) {
 
     const analytics = useMemo(() => {
-        const sortedLogs = logs.slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const safeLogs = Array.isArray(logs) ? logs : [];
+        const sortedLogs = safeLogs.slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         const today = getDayStart(new Date());
 
         // Calculate Streak
@@ -73,7 +79,7 @@ export default function DashboardPage({ logs, plan }: DashboardPageProps) {
         }
         
         // Calculate Weekly Volume & Chart Data
-        const weeklyVolumeData = Array.from({ length: 7 }).map((_, i) => {
+        const weeklyVolumeData = [...Array(7)].map((_, i) => {
             const date = new Date(today);
             date.setDate(today.getDate() - (6 - i));
             return {
@@ -86,12 +92,14 @@ export default function DashboardPage({ logs, plan }: DashboardPageProps) {
         let totalWeeklyVolume = 0;
         const oneWeekAgo = new Date(today.getTime() - 6 * 86400000);
 
-        logs.forEach(log => {
+        safeLogs.forEach(log => {
             const logDate = getDayStart(new Date(log.date));
             if (logDate >= oneWeekAgo) {
                 let sessionVolume = 0;
-                log.exercises.forEach(ex => {
-                    ex.sets.forEach(set => {
+                const exercises = Array.isArray(log.exercises) ? log.exercises : [];
+                exercises.forEach(ex => {
+                    const sets = Array.isArray(ex.sets) ? ex.sets : [];
+                    sets.forEach(set => {
                         if ('weight' in set && 'reps' in set) {
                             sessionVolume += Number(set.weight) * Number(set.reps);
                         }
@@ -126,7 +134,7 @@ export default function DashboardPage({ logs, plan }: DashboardPageProps) {
         });
 
         return {
-            totalWorkouts: logs.length,
+            totalWorkouts: safeLogs.length,
             currentStreak,
             totalWeeklyVolume: Math.round(totalWeeklyVolume),
             weeklyVolumeData,
@@ -139,47 +147,54 @@ export default function DashboardPage({ logs, plan }: DashboardPageProps) {
     };
 
     return (
-        <div className="w-full max-w-4xl mx-auto p-4 sm:p-6 animate-fade-in flex-1">
-            <header className="mb-8 flex justify-between items-center flex-wrap gap-4">
-                <div className="flex items-center gap-4">
-                    <LogoIcon className="h-10 w-auto text-4xl text-white" />
-                    <div>
-                        <h1 className="font-syne text-xl sm:text-2xl font-bold text-white">Dashboard</h1>
-                        <p className="text-sm text-stone-400">Your performance at a glance.</p>
-                    </div>
-                </div>
-                <button onClick={handleSignOut} title="Sign Out" className="p-2 border border-stone-700 rounded-lg text-stone-300 bg-stone-800/50 hover:bg-stone-700/70 hover:text-white transition">
-                    <SignOutIcon className="w-5 h-5"/>
-                </button>
+        <div className="w-full max-w-2xl mx-auto px-5 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] animate-fade-in flex-1">
+            <header className="mb-8">
+                <p className="text-[11px] uppercase tracking-wide text-[var(--text-tertiary)] font-semibold mb-2">YOUR PROGRESS</p>
+                <h1 className="font-syne text-3xl font-bold text-[var(--text-primary)] leading-tight">Dashboard</h1>
             </header>
 
-            <main className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-24">
-                <StatCard title="Total Workouts" value={analytics.totalWorkouts} description="Completed sessions" />
-                <StatCard title="Current Streak" value={analytics.currentStreak} description="Consecutive training days" />
-                <StatCard title="This Week's Volume" value={`${analytics.totalWeeklyVolume} kg`} description="Total weight lifted" />
-                
-                <div className="md:col-span-3">
-                     <WeeklyVolumeChart data={analytics.weeklyVolumeData} />
+            <main className="space-y-5 pb-4">
+                {/* Key Stats Grid */}
+                <div className="grid grid-cols-2 gap-4">
+                    <StatCard title="Workouts" value={analytics.totalWorkouts} description="Completed" accent={true} />
+                    <StatCard title="Streak" value={analytics.currentStreak} description="Days in a row" />
                 </div>
 
+                {/* Weekly Volume */}
+                <WeeklyVolumeChart data={analytics.weeklyVolumeData} />
+
+                {/* Volume Total */}
+                <StatCard
+                    title="This Week"
+                    value={`${analytics.totalWeeklyVolume.toLocaleString()}`}
+                    description="lbs total volume"
+                />
+
+                {/* Key Lift Progression */}
                 {analytics.keyLiftProgress.length > 0 && (
-                     <div className="md:col-span-3 bg-stone-800/50 border border-stone-700 p-6 rounded-2xl backdrop-blur-xl shadow-lg">
-                        <h3 className="font-syne text-lg font-bold text-white">Key Lift Progression</h3>
-                        <div className="mt-4 space-y-3">
+                     <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5" style={{ boxShadow: 'var(--shadow-sm)' }}>
+                        <p className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] mb-2">STRENGTH GAINS</p>
+                        <h3 className="font-syne text-xl font-bold text-[var(--text-primary)] mb-5">Key Lifts</h3>
+                        <div className="space-y-3">
                             {analytics.keyLiftProgress.map(lift => (
-                                <div key={lift.name} className="flex justify-between items-center bg-stone-900/50 p-3 rounded-md">
-                                    <p className="font-semibold capitalize text-stone-200">{lift.name}</p>
-                                    <p className="font-mono font-bold text-lg text-white">{lift.start}kg &rarr; {lift.current}kg</p>
+                                <div key={lift.name} className="flex justify-between items-center bg-[var(--surface-secondary)] p-4 rounded-lg">
+                                    <p className="font-semibold capitalize text-[15px] text-[var(--text-primary)]">{lift.name}</p>
+                                    <p className="font-mono font-bold text-base text-[var(--accent)]">
+                                        {lift.start} → {lift.current} kg
+                                    </p>
                                 </div>
                             ))}
                         </div>
                     </div>
                 )}
-                 {logs.length < 2 && (
-                    <div className="md:col-span-3 text-center py-10 flex flex-col items-center justify-center bg-stone-800/50 border border-stone-700 rounded-2xl shadow-lg backdrop-blur-lg">
-                        <DumbbellIcon className="h-10 w-10 text-stone-400"/>
-                        <h3 className="font-syne mt-6 text-xl font-bold text-white">More Data Needed</h3>
-                        <p className="mt-2 text-stone-400 max-w-sm">Log a few more workouts to start seeing your progress analytics here.</p>
+
+                {analytics.totalWorkouts < 2 && (
+                    <div className="text-center py-12 flex flex-col items-center justify-center bg-[var(--surface)] border border-[var(--border)] rounded-xl" style={{ boxShadow: 'var(--shadow-sm)' }}>
+                        <div className="w-16 h-16 bg-[var(--surface-secondary)] rounded-lg flex items-center justify-center mb-4">
+                            <DumbbellIcon className="h-8 w-8 text-[var(--text-tertiary)]"/>
+                        </div>
+                        <h3 className="font-syne text-xl font-bold text-[var(--text-primary)]">Start Training</h3>
+                        <p className="mt-2 text-[14px] text-[var(--text-secondary)] max-w-xs px-4">Log a few workouts to see your progress analytics.</p>
                     </div>
                 )}
             </main>

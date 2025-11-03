@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { WorkoutPlan } from '../types';
 import { db } from '../firebase';
-import { collection, doc, getDoc, setDoc, deleteDoc, addDoc, onSnapshot, query, orderBy, serverTimestamp, Timestamp, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, setDoc, deleteDoc, addDoc, onSnapshot, query, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore';
 
 export default function useWorkoutPlan(userId: string | undefined | null) {
     const [allPlans, setAllPlans] = useState<WorkoutPlan[] | null>(null);
@@ -110,7 +110,9 @@ export default function useWorkoutPlan(userId: string | undefined | null) {
         if (!userId || !updatedPlan.id) return;
         const planDocRef = doc(db, 'users', userId, 'plans', updatedPlan.id);
         try {
-            await setDoc(planDocRef, updatedPlan, { merge: true });
+            // Avoid clobbering Firestore-managed fields such as createdAt and id
+            const { id: _omitId, createdAt: _omitCreatedAt, ...editable } = updatedPlan as any;
+            await setDoc(planDocRef, editable, { merge: true });
         } catch(error) {
             console.error("Error updating plan:", error);
         }

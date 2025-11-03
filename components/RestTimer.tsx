@@ -3,8 +3,12 @@ import { PlusIcon, ForwardIcon } from './icons';
 
 interface RestTimerProps {
   duration: number; // in seconds
-  onFinish: () => void;
-  timerKey: number;
+  onComplete?: () => void;
+  onFinish?: () => void;
+  onSkip?: () => void;
+  timerKey?: number;
+  mute?: boolean;
+  vibrate?: boolean;
 }
 
 const audioContext = typeof window !== 'undefined' ? new (window.AudioContext || (window as any).webkitAudioContext)() : null;
@@ -28,7 +32,7 @@ const playNotificationSound = () => {
     oscillator.stop(audioContext.currentTime + 0.5);
 };
 
-export default function RestTimer({ duration, onFinish, timerKey }: RestTimerProps) {
+export default function RestTimer({ duration, onComplete, onFinish, onSkip, timerKey, mute = false, vibrate = false }: RestTimerProps) {
   const [timeLeft, setTimeLeft] = useState(duration);
   const intervalRef = useRef<number | null>(null);
 
@@ -39,8 +43,12 @@ export default function RestTimer({ duration, onFinish, timerKey }: RestTimerPro
 
   useEffect(() => {
     if (timeLeft <= 0) {
-      playNotificationSound();
-      onFinish();
+      if (!mute) playNotificationSound();
+      if (vibrate && typeof navigator !== 'undefined' && typeof (navigator as any).vibrate === 'function') {
+        try { (navigator as any).vibrate(200); } catch {}
+      }
+      if (onComplete) onComplete();
+      if (onFinish) onFinish();
       return;
     }
 
@@ -53,13 +61,14 @@ export default function RestTimer({ duration, onFinish, timerKey }: RestTimerPro
         clearInterval(intervalRef.current);
       }
     };
-  }, [timeLeft, onFinish]);
-  
+  }, [timeLeft, onComplete, onFinish]);
+
   const handleAddTime = () => {
       setTimeLeft(prev => prev + 15);
   };
-  
+
   const handleSkip = () => {
+      if (onSkip) onSkip();
       setTimeLeft(0);
   };
   
@@ -69,22 +78,22 @@ export default function RestTimer({ duration, onFinish, timerKey }: RestTimerPro
   const strokeDashoffset = circumference - progress * circumference;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/80 backdrop-blur-md animate-fade-in">
-      <div className="relative w-80 h-80 flex flex-col items-center justify-center text-center">
+    <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-8 animate-scale-in" style={{ boxShadow: 'var(--shadow-lg)' }}>
+      <div className="relative w-full aspect-square max-w-xs mx-auto flex flex-col items-center justify-center text-center">
         <svg className="absolute w-full h-full" viewBox="0 0 140 140">
             <circle
-                className="text-stone-800"
+                className="text-[var(--surface-secondary)]"
                 stroke="currentColor"
-                strokeWidth="8"
+                strokeWidth="6"
                 fill="transparent"
                 r={radius}
                 cx="70"
                 cy="70"
             />
             <circle
-                className="text-red-500"
+                className="text-[var(--accent)]"
                 stroke="currentColor"
-                strokeWidth="8"
+                strokeWidth="6"
                 fill="transparent"
                 r={radius}
                 cx="70"
@@ -94,22 +103,25 @@ export default function RestTimer({ duration, onFinish, timerKey }: RestTimerPro
                 style={{
                     strokeDasharray: circumference,
                     strokeDashoffset: strokeDashoffset,
-                    transition: 'stroke-dashoffset 1s linear'
+                    transition: 'stroke-dashoffset 1s linear',
+                    filter: 'drop-shadow(var(--glow-red))'
                 }}
             />
         </svg>
         <div className="z-10">
-            <p className="text-sm font-bold text-stone-400 tracking-widest">REST</p>
-            <p className="font-syne text-7xl font-extrabold text-white my-2">{timeLeft}</p>
-            <div className="flex items-center justify-center gap-4">
-                 <button onClick={handleAddTime} className="flex items-center gap-1.5 px-4 py-2 bg-stone-800/50 text-stone-200 text-sm font-semibold rounded-full hover:bg-stone-700/50 transition">
-                    <PlusIcon className="w-4 h-4" /> +15s
-                </button>
-                 <button onClick={handleSkip} className="flex items-center gap-1.5 px-4 py-2 bg-stone-800/50 text-stone-200 text-sm font-semibold rounded-full hover:bg-stone-700/50 transition">
-                    Skip <ForwardIcon className="w-4 h-4" />
-                </button>
-            </div>
+            <p className="text-[11px] font-bold text-[var(--text-tertiary)] tracking-widest uppercase mb-2">Rest</p>
+            <p className="font-syne text-7xl font-bold text-[var(--text-primary)] mb-4">{timeLeft}</p>
+            <p className="text-[13px] text-[var(--text-secondary)]">Get ready for next set</p>
         </div>
+      </div>
+
+      <div className="flex items-center justify-center gap-3 mt-8">
+           <button onClick={handleAddTime} className="flex items-center gap-2 px-5 py-3 bg-[var(--surface-secondary)] text-[var(--text-primary)] text-[14px] font-semibold rounded-lg hover:bg-[var(--surface-hover)] transition">
+              <PlusIcon className="w-4 h-4" /> +15s
+          </button>
+           <button onClick={handleSkip} className="flex items-center gap-2 px-5 py-3 bg-[var(--accent)] text-white text-[14px] font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition" style={{ boxShadow: 'var(--glow-red)' }}>
+              Skip <ForwardIcon className="w-4 h-4" />
+          </button>
       </div>
     </div>
   );

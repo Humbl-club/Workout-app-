@@ -8,45 +8,161 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Syne:wght@700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
+      /* Design System - Midnight Energy (Volt Athletics) */
+      :root {
+        /* Backgrounds */
+        --background: #121418;              /* Deep navy/charcoal */
+        --surface: #1C1F26;                 /* Elevated slate */
+        --surface-secondary: #252930;       /* Darker slate */
+        --surface-hover: #2D323B;           /* Interactive slate */
+
+        /* Text */
+        --text-primary: #F8F9FA;            /* Off-white (softer on eyes) */
+        --text-secondary: #ADB5BD;          /* Light gray */
+        --text-tertiary: #6C757D;           /* Medium gray */
+
+        /* Red Accent System (REBLD Brand) */
+        --accent: #FF3366;                  /* Hot pink/red - primary */
+        --accent-hover: #E62E5C;
+        --accent-light: rgba(255, 51, 102, 0.1);
+
+        /* Multi-Color for Context */
+        --accent-primary: #FF3366;          /* Primary red */
+        --accent-secondary: #00E5FF;        /* Electric cyan (secondary) */
+        --accent-tertiary: #FFD700;         /* Electric gold */
+
+        --accent-strength: #FF3366;         /* Strength training */
+        --accent-cardio: #00E5FF;           /* Cardio */
+        --accent-mobility: #FFD700;         /* Mobility/recovery */
+
+        /* Status */
+        --success: #00E5A0;                 /* Electric mint */
+        --error: #FF4655;                   /* Bright red */
+        --warning: #FFB800;                 /* Bright orange */
+
+        /* Borders */
+        --border: rgba(248, 249, 250, 0.1);
+        --border-strong: rgba(248, 249, 250, 0.15);
+
+        /* Shadows (Darker, more dramatic) */
+        --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+        --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+        --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4);
+        --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.5);
+
+        /* Glow effects for accents */
+        --glow-red: 0 0 20px rgba(255, 51, 102, 0.3);
+        --glow-cyan: 0 0 20px rgba(0, 229, 255, 0.3);
+        --glow-gold: 0 0 20px rgba(255, 215, 0, 0.3);
+
+        /* Gradient System - Premium */
+        --gradient-primary: linear-gradient(135deg, #FF3366, #FF6B9D);
+        --gradient-progress: linear-gradient(90deg, #FF3366, #FF6B3D);
+        --gradient-success: linear-gradient(135deg, #00E5A0, #00E5FF);
+        --gradient-subtle-bg: linear-gradient(180deg, rgba(255, 51, 102, 0.03), transparent);
+        --gradient-text: linear-gradient(135deg, #FF3366, #FF6B9D);
+
+        /* Transitions */
+        --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+        --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      * {
+        -webkit-tap-highlight-color: transparent;
+      }
+
       body {
-        font-family: 'Manrope', sans-serif;
-        background-color: #1C1C1E;
+        font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+        background-color: var(--background);
+        color: var(--text-primary);
+        font-size: 13px;
+        line-height: 1.3;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        overscroll-behavior-y: none;
+        touch-action: pan-y;
       }
+
+      /* Ultra-compact mobile typography */
+      h1, .text-3xl {
+        font-size: 18px;
+        line-height: 1.2;
+      }
+      h2, .text-2xl {
+        font-size: 16px;
+        line-height: 1.2;
+      }
+      h3, .text-xl {
+        font-size: 14px;
+        line-height: 1.3;
+      }
+      .text-4xl {
+        font-size: 20px;
+        line-height: 1.1;
+      }
+
+      /* Safe area support for notched iPhones */
+      @supports (padding: max(0px)) {
+        body {
+          padding-left: env(safe-area-inset-left);
+          padding-right: env(safe-area-inset-right);
+        }
+      }
+
       .font-syne {
-        font-family: 'Syne', sans-serif;
+        font-family: 'Syne', system-ui, sans-serif;
       }
+
+      .font-grotesk {
+        font-family: 'Space Grotesk', system-ui, sans-serif;
+      }
+
       .logo-spacing {
-        letter-spacing: -0.055em;
+        letter-spacing: -0.02em;
       }
-      
-      /* Custom fade-in animations */
+
+      /* Scrollbar styling */
+      .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      /* Animations - Subtle and purposeful */
       @keyframes fade-in {
         from { opacity: 0; }
         to { opacity: 1; }
       }
-      @keyframes fade-in-down {
-        from { opacity: 0; transform: translateY(-20px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
+
       @keyframes fade-in-up {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-       @keyframes staggered-fade-in-up {
         from {
           opacity: 0;
-          transform: translateY(10px);
+          transform: translateY(16px);
         }
         to {
           opacity: 1;
           transform: translateY(0);
         }
       }
-      @keyframes scale-in-center {
+
+      @keyframes slide-in {
         from {
-          transform: scale(0.9);
+          transform: translateX(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+
+      @keyframes scale-in {
+        from {
+          transform: scale(0.95);
           opacity: 0;
         }
         to {
@@ -54,56 +170,79 @@
           opacity: 1;
         }
       }
-      @keyframes gleam {
-        0% { transform: translateX(-150%) skewX(-25deg); }
-        80% { transform: translateX(-150%) skewX(-25deg); }
-        100% { transform: translateX(150%) skewX(-25deg); }
-      }
-      @keyframes pulse-logo {
-        50% {
-          opacity: 0.7;
-        }
-      }
-      @keyframes pulse-fab {
+
+      @keyframes pulse-subtle {
         0%, 100% {
           transform: scale(1);
-          box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+          opacity: 1;
         }
         50% {
-          transform: scale(1.05);
-          box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
-        }
-      }
-      @keyframes slide-in-from-right {
-        0% {
-          transform: translateX(100%);
-          opacity: 0;
-        }
-        100% {
-          transform: translateX(0);
-          opacity: 1;
-        }
-      }
-      @keyframes slide-out-to-left {
-        0% {
-          transform: translateX(0);
-          opacity: 1;
-        }
-        100% {
-          transform: translateX(-100%);
-          opacity: 0;
+          transform: scale(1.02);
+          opacity: 0.95;
         }
       }
 
-      .animate-fade-in-custom { animation: fade-in 0.6s ease-out both; }
-      .animate-fade-in-down-custom { animation: fade-in-down 0.6s ease-out both; }
-      .animate-fade-in-up-custom { animation: fade-in-up 0.6s ease-out both; }
-      .animate-staggered-fade-in-up { animation: staggered-fade-in-up 0.5s ease-out backwards; }
-      .animate-scale-in-center { animation: scale-in-center 0.6s cubic-bezier(0.250, 0.460, 0.450, 0.940) both; }
-      .animate-gleam { animation: gleam 8s infinite linear; }
-      .animate-pulse-logo { animation: pulse-logo 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-      .animate-pulse-fab { animation: pulse-fab 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-      .animate-slide-in-from-right { animation: slide-in-from-right 0.5s cubic-bezier(0.250, 0.460, 0.450, 0.940) both; }
+      .animate-fade-in {
+        animation: fade-in 0.4s var(--transition-base) both;
+      }
+
+      .animate-fade-in-up {
+        animation: fade-in-up 0.5s var(--transition-base) both;
+      }
+
+      .animate-slide-in {
+        animation: slide-in 0.4s var(--transition-base) both;
+      }
+
+      .animate-scale-in {
+        animation: scale-in 0.3s var(--transition-base) both;
+      }
+
+      .animate-pulse-subtle {
+        animation: pulse-subtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+
+      /* Gradient Utilities */
+      .gradient-text {
+        background: var(--gradient-text);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .gradient-border {
+        position: relative;
+        background: var(--surface);
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+
+      .gradient-border::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 2px;
+        background: var(--gradient-primary);
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        pointer-events: none;
+      }
+
+      @keyframes gradient-shift {
+        0%, 100% {
+          background-position: 0% 50%;
+        }
+        50% {
+          background-position: 100% 50%;
+        }
+      }
+
+      .animate-gradient {
+        background-size: 200% 200%;
+        animation: gradient-shift 3s ease infinite;
+      }
 
     </style>
   <script type="importmap">
@@ -121,7 +260,7 @@
 }
 </script>
 </head>
-  <body class="text-stone-100">
+  <body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

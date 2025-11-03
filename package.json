@@ -5,16 +5,27 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "tunnel": "npx localtunnel --port 3000",
+    "emulators": "firebase emulators:start --only firestore,auth",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "fb:health": "node scripts/firestore_healthcheck.mjs",
+    "fb:scan": "node scripts/firestore_tools.mjs scan --depth=2 --limit=50 --maxDocs=5000",
+    "fb:dump": "node scripts/firestore_tools.mjs dump --out=.data/firestore_dump.jsonl --depth=10 --limit=1000 --maxDocs=200000",
+    "fb:list": "node scripts/firestore_tools.mjs list",
+    "fb:get": "node scripts/firestore_tools.mjs get",
+    "fb:findid": "node scripts/firestore_tools.mjs findid",
+    "fb:counts": "node scripts/firestore_tools.mjs counts"
   },
   "dependencies": {
+    "@dataconnect/generated": "file:src/dataconnect-generated",
     "@google/genai": "^1.27.0",
+    "firebase": "^12.4.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "firebase": "^12.4.0"
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "firebase-admin": "^13.0.2",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",

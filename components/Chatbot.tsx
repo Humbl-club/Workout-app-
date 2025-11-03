@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, FormEvent } from 'react';
 import { ChatMessage, WorkoutPlan, PlanExercise, PlanDay, WorkoutBlock } from '../types';
-import { initializeChatSession } from '../services/geminiService';
+import { initializeChatSession, simpleGenerate } from '../services/geminiService';
 import { XMarkIcon, SendIcon, SparklesIcon, LogoIcon, XCircleIcon } from './icons';
 import { Chat, Part } from '@google/genai';
+import { notify } from './layout/Toast';
 
 interface ChatbotProps {
   isOpen: boolean;
@@ -22,17 +23,31 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
   const chatRef = useRef<Chat | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const initialMessageSet = useRef(false);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [apiKeyDraft, setApiKeyDraft] = useState('');
 
 
   useEffect(() => {
     if (isOpen) {
       if (plan && !chatRef.current) {
+        try {
           chatRef.current = initializeChatSession(plan, dayOfWeek);
-           if (messages.length === 0) {
+          setSessionReady(true);
+          if (messages.length === 0) {
             setMessages([
               { role: 'model', text: 'Hello! I am your REBLD fitness assistant. How can I help you adapt your plan today?' }
             ]);
           }
+        } catch (e: any) {
+          console.error('Chat initialization failed:', e);
+          setSessionReady(false);
+          if (messages.length === 0) {
+            setMessages([
+              { role: 'model', text: 'AI chat is in basic mode. I can still answer questions, but plan-editing features may be limited.' }
+            ]);
+          }
+        }
       }
       if (initialMessage && !initialMessageSet.current) {
         setInput(initialMessage);
@@ -40,9 +55,10 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
         setTimeout(() => inputRef.current?.focus(), 100);
       }
     } else {
-        chatRef.current = null;
-        initialMessageSet.current = false;
-        setInput('');
+      chatRef.current = null;
+      initialMessageSet.current = false;
+      setSessionReady(false);
+      setInput('');
     }
   }, [isOpen, plan, initialMessage, messages.length, dayOfWeek]);
 
@@ -80,6 +96,7 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
 
             if (substituted) {
               onPlanUpdate(updatedPlan);
+              notify({ type: 'success', message: `Replaced ${original_exercise_name} with ${new_exercise_name}` });
               functionResponseText = `OK. I've substituted ${original_exercise_name} with ${new_exercise_name}.`;
             } else {
               functionResponseText = `Error: I couldn't find the exercise ${original_exercise_name} to substitute.`;
@@ -129,6 +146,7 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
             dayToUpdate.blocks = blocks;
 
             onPlanUpdate(updatedPlan);
+            notify({ type: 'success', message: `Added ${new_exercise_name} to day ${day_of_week}` });
             functionResponseText = `OK. I've added ${new_exercise_name} to your plan.`;
         } else {
             functionResponseText = `Error: I couldn't find day ${day_of_week} in the plan.`;
@@ -147,7 +165,7 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading || !chatRef.current) return;
+    if (!input.trim() || isLoading) return;
 
     const userMessage: ChatMessage = { role: 'user', text: input };
     setMessages(prev => [...prev, userMessage]);
@@ -157,50 +175,55 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
     setError(null);
 
     try {
-      const result = await chatRef.current.sendMessageStream({ message: currentInput });
+      if (chatRef.current) {
+        const result = await chatRef.current.sendMessageStream({ message: currentInput });
 
-      let modelResponseText = '';
-      let functionCall: any = null;
-      
-      setMessages(prev => [...prev, { role: 'model', text: '' }]);
-
-      for await (const chunk of result) {
-        if (chunk.functionCalls && chunk.functionCalls.length > 0) {
-          functionCall = chunk.functionCalls[0];
-        }
-        if (chunk.text) {
-          modelResponseText += chunk.text;
-          setMessages(prev => {
-              const newMessages = [...prev];
-              newMessages[newMessages.length - 1].text = modelResponseText;
-              return newMessages;
-          });
-        }
-      }
-      
-      if(modelResponseText.trim() === '' && functionCall) {
-          setMessages(prev => prev.slice(0, -1));
-      }
-
-      if (functionCall) {
-        const functionResponsePart = handleFunctionCall(functionCall);
-        const secondResult = await chatRef.current.sendMessageStream({ message: [functionResponsePart] });
+        let modelResponseText = '';
+        let functionCall: any = null;
         
-        let finalModelResponse = '';
         setMessages(prev => [...prev, { role: 'model', text: '' }]);
 
-        for await (const chunk of secondResult) {
-          if(chunk.text) {
-            finalModelResponse += chunk.text;
-             setMessages(prev => {
+        for await (const chunk of result) {
+          if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+            functionCall = chunk.functionCalls[0];
+          }
+          if (chunk.text) {
+            modelResponseText += chunk.text;
+            setMessages(prev => {
                 const newMessages = [...prev];
-                newMessages[newMessages.length - 1].text = finalModelResponse;
+                newMessages[newMessages.length - 1].text = modelResponseText;
                 return newMessages;
             });
           }
         }
-      }
+        
+        if(modelResponseText.trim() === '' && functionCall) {
+            setMessages(prev => prev.slice(0, -1));
+        }
 
+        if (functionCall) {
+          const functionResponsePart = handleFunctionCall(functionCall);
+          const secondResult = await chatRef.current.sendMessageStream({ message: [functionResponsePart] });
+          
+          let finalModelResponse = '';
+          setMessages(prev => [...prev, { role: 'model', text: '' }]);
+
+          for await (const chunk of secondResult) {
+            if(chunk.text) {
+              finalModelResponse += chunk.text;
+               setMessages(prev => {
+                  const newMessages = [...prev];
+                  newMessages[newMessages.length - 1].text = finalModelResponse;
+                  return newMessages;
+              });
+            }
+          }
+        }
+      } else {
+        // No session available; use simple generate
+        const fallback = await simpleGenerate(currentInput, 'You are a concise, helpful fitness assistant.');
+        setMessages(prev => [...prev, { role: 'model', text: fallback }]);
+      }
     } catch (err) {
       const e = err as Error;
       console.error("Chatbot error:", e);
@@ -230,6 +253,11 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
                     <div>
                         <h2 className="font-syne text-lg font-bold text-white">REBLD Assistant</h2>
                         <p className="text-xs text-stone-400">Powered by Gemini Pro</p>
+                        {!sessionReady && (
+                          <button onClick={() => setShowKeyInput(s => !s)} className="text-[11px] text-red-300 underline mt-1">
+                            {showKeyInput ? 'Hide API key input' : 'Set API key'}
+                          </button>
+                        )}
                     </div>
                 </div>
                 <button onClick={onClose} className="p-1 rounded-full text-stone-400 hover:bg-stone-800 hover:text-white">
@@ -238,6 +266,36 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
             </header>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {showKeyInput && (
+                  <div className="bg-stone-900/60 border border-stone-700 p-3 rounded-lg">
+                    <p className="text-xs text-stone-300 mb-2">Paste your Gemini API key. It will be stored locally in this browser.</p>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={apiKeyDraft}
+                        onChange={(e) => setApiKeyDraft(e.target.value)}
+                        placeholder="GEMINI_API_KEY"
+                        className="flex-1 px-3 py-2 text-sm bg-stone-800/70 border border-stone-700 rounded-md text-stone-100"
+                      />
+                      <button
+                        onClick={() => {
+                          try {
+                            localStorage.setItem('GEMINI_API_KEY', apiKeyDraft.trim());
+                            setApiKeyDraft('');
+                            setShowKeyInput(false);
+                            chatRef.current = null;
+                            setSessionReady(false);
+                            // Re-init on next render
+                            setTimeout(() => {
+                              try { chatRef.current = initializeChatSession(plan!, dayOfWeek); setSessionReady(true); } catch { /* ignore */ }
+                            }, 50);
+                          } catch {}
+                        }}
+                        className="px-4 py-2 text-sm font-semibold rounded-md bg-red-500 text-white"
+                      >Save</button>
+                    </div>
+                  </div>
+                )}
                 {messages.map((msg, index) => (
                     <div key={index} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         {msg.role === 'model' && <div className="w-8 h-8 rounded-full bg-stone-800 flex items-center justify-center shrink-0 border border-stone-700"><SparklesIcon className="w-5 h-5 text-stone-400"/></div>}
