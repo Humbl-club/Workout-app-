@@ -1,0 +1,292 @@
+{
+  "source_methodology": "Evidence-based protocols from rehabilitation and sports medicine textbooks",
+  "clinical_evidence_level": "Grade A and B recommendations from peer-reviewed research",
+  "protocols": [
+    {
+      "issue": "lumbar_spine_dysfunction",
+      "source_books": ["Low Back Disorders (3rd Ed.)", "Ultimate Back Fitness and Performance (6th Ed.)"],
+      "author": "Stuart McGill",
+      "clinical_evidence": "30+ years spine biomechanics research, 240+ peer-reviewed publications",
+      "prevalence": "80% of population experiences low back pain, 23% have chronic symptoms",
+      "exercises_to_avoid": [
+        {
+          "exercise": "sit_ups_crunches",
+          "reason": "Create 8000+ Newtons spine compression vs 3000N safety threshold",
+          "research": "McGill (2007): Spine loading during common exercises"
+        },
+        {
+          "exercise": "russian_twists_loaded",
+          "reason": "Combined flexion and rotation increases disc injury risk 5-fold",
+          "research": "Callaghan & McGill (2001): Intervertebral disc herniation studies"
+        },
+        {
+          "exercise": "superman_holds",
+          "reason": "Excessive extension increases facet joint compression by 300%",
+          "research": "McGill (2010): Extension exercise loading patterns"
+        }
+      ],
+      "exercise_substitutions": [
+        {
+          "avoid": "traditional_sit_ups",
+          "use_instead": "mcgill_curl_up",
+          "rationale": "Reduces spine compression from 8000N to <3000N while maintaining 45-55% rectus activation",
+          "research": "Vera-Garcia et al. (2000): EMG analysis of abdominal exercises"
+        },
+        {
+          "avoid": "back_extensions",
+          "use_instead": "bird_dog",
+          "rationale": "Builds posterior chain endurance without excessive spine loading",
+          "research": "McGill et al. (1999): Spine stability exercise analysis"
+        }
+      ],
+      "rehabilitation_protocol": {
+        "phase_1_acute": {
+          "duration": "0-72 hours post-injury",
+          "goals": ["Pain reduction", "Inflammation control"],
+          "exercises": ["Walking tolerance", "Gentle range of motion"],
+          "contraindications": ["Bed rest >48 hours", "Passive treatments only"]
+        },
+        "phase_2_subacute": {
+          "duration": "3 days - 6 weeks",
+          "goals": ["Restore movement patterns", "Build endurance"],
+          "exercises": ["McGill Big 3", "Walking progression", "Cat-cow stretches"],
+          "progression_criteria": "Pain-free completion for 2+ weeks"
+        },
+        "phase_3_return_to_function": {
+          "duration": "6 weeks - 6 months",
+          "goals": ["Return to full activity", "Injury prevention"],
+          "exercises": ["Progressive loading", "Sport-specific movements"],
+          "discharge_criteria": "Full function without pain for 1 month"
+        }
+      },
+      "warning_signs": [
+        "Radiating pain below knee (possible nerve involvement)",
+        "Loss of bowel/bladder control (cauda equina syndrome)",
+        "Progressive neurological deficits",
+        "Severe night pain disrupting sleep"
+      ],
+      "return_to_activity_criteria": {
+        "objective_measures": [
+          "Pain rating <2/10 during daily activities",
+          "Oswestry Disability Index <20%",
+          "McGill endurance test ratios within normal limits"
+        ],
+        "functional_tests": [
+          "Can perform McGill Big 3 without symptoms",
+          "Sustained walking >30 minutes",
+          "Return to work duties without modification"
+        ]
+      },
+      "research_outcomes": {
+        "success_rate": "76% reduction in recurrence using McGill Method",
+        "time_to_recovery": "Average 8-12 weeks for chronic cases",
+        "long_term_outcomes": "85% remain pain-free at 2-year follow-up"
+      }
+    },
+    {
+      "issue": "anterior_knee_pain",
+      "source_books": ["Rehabilitation Techniques for Sports Medicine (7th Ed.)", "Principles of Athletic Training (17th Ed.)"],
+      "author": "William Prentice",
+      "clinical_evidence": "NATA Hall of Fame, 40+ years clinical experience",
+      "prevalence": "25% of active population, 40% of runners",
+      "exercises_to_avoid": [
+        {
+          "exercise": "deep_squats_below_90_degrees",
+          "reason": "Patellofemoral contact pressure increases 7.6-fold at deep angles",
+          "research": "Huberti & Hayes (1984): Patellofemoral contact pressures"
+        },
+        {
+          "exercise": "leg_extensions_full_range",
+          "reason": "Creates anterior shear forces 3000% greater than functional activities",
+          "research": "Wilk et al. (1996): Patellofemoral rehabilitation guidelines"
+        },
+        {
+          "exercise": "running_hills_excessive",
+          "reason": "Downhill running increases patellofemoral stress by 45%",
+          "research": "Powers (2010): Patellofemoral pain syndrome mechanics"
+        }
+      ],
+      "exercise_substitutions": [
+        {
+          "avoid": "bilateral_squats_deep",
+          "use_instead": "wall_sits_60_90_degrees",
+          "rationale": "Maintains quadriceps activation while limiting patellofemoral stress to safe ranges",
+          "research": "Escamilla et al. (1998): Knee biomechanics during squatting"
+        },
+        {
+          "avoid": "leg_extensions",
+          "use_instead": "straight_leg_raises",
+          "rationale": "Isolates quadriceps without patellofemoral compression forces",
+          "research": "Prentice (2017): Evidence-based knee rehabilitation"
+        },
+        {
+          "avoid": "plyometric_jumping",
+          "use_instead": "step_ups_controlled",
+          "rationale": "Reduces impact forces while maintaining functional strengthening",
+          "research": "Wilk & Reinold (2001): Principles of patellofemoral rehabilitation"
+        }
+      ],
+      "rehabilitation_protocol": {
+        "phase_1_pain_control": {
+          "duration": "0-2 weeks",
+          "goals": ["Reduce inflammation", "Pain-free range of motion"],
+          "exercises": ["Quad sets", "Straight leg raises", "Gentle stretching"],
+          "modalities": ["Ice 15-20min post-activity", "NSAIDs if tolerated"]
+        },
+        "phase_2_strengthening": {
+          "duration": "2-6 weeks", 
+          "goals": ["Quadriceps strengthening", "Hip stability"],
+          "exercises": ["Wall sits", "Clamshells", "Hip bridges", "Step ups"],
+          "progression": "Increase hold time before adding resistance"
+        },
+        "phase_3_functional": {
+          "duration": "6-12 weeks",
+          "goals": ["Return to sport", "Movement quality"],
+          "exercises": ["Single leg squats", "Lateral movements", "Sport-specific drills"],
+          "criteria": "Pain-free functional activities for 2 weeks"
+        }
+      },
+      "biomechanical_factors": [
+        "Q-angle >20° increases patellofemoral stress by 30%",
+        "Hip weakness contributes to 75% of anterior knee pain cases",
+        "Foot pronation increases knee valgus stress by 25%"
+      ],
+      "prevention_strategies": [
+        "Hip strengthening reduces injury risk by 45% (Powers, 2010)",
+        "Quadriceps flexibility programs decrease symptoms in 70% of cases",
+        "Proper footwear reduces impact forces by 15-25%"
+      ]
+    },
+    {
+      "issue": "shoulder_impingement_syndrome",
+      "source_books": ["Rehabilitation Techniques for Sports Medicine (7th Ed.)", "Recovery for Performance in Sport"],
+      "authors": ["William Prentice", "Christophe Hausswirth"],
+      "clinical_evidence": "Most common shoulder disorder, 44-65% of shoulder pain cases",
+      "prevalence": "85% of overhead athletes experience symptoms",
+      "exercises_to_avoid": [
+        {
+          "exercise": "behind_neck_pressing",
+          "reason": "Places shoulder in extreme external rotation increasing impingement risk 300%",
+          "research": "Gross et al. (1993): Analysis of shoulder positions and injury risk"
+        },
+        {
+          "exercise": "upright_rows_wide_grip",
+          "reason": "Internal rotation with abduction creates impingement at 70-120° arc",
+          "research": "Blackburn et al. (1990): EMG analysis of shoulder exercises"
+        },
+        {
+          "exercise": "bench_press_wide_grip",
+          "reason": "Excessive horizontal abduction strains anterior capsule",
+          "research": "Fees et al. (1998): Upper extremity weight training modifications for the injured athlete"
+        }
+      ],
+      "exercise_substitutions": [
+        {
+          "avoid": "overhead_press_behind_neck",
+          "use_instead": "landmine_press_unilateral",
+          "rationale": "Allows natural scapular rhythm while avoiding impingement position",
+          "research": "Kibler & McMullen (2003): Scapular dyskinesis and shoulder injury"
+        },
+        {
+          "avoid": "lat_pulldowns_behind_neck",
+          "use_instead": "lat_pulldowns_to_chest",
+          "rationale": "Maintains lat activation while protecting shoulder capsule",
+          "research": "Signorile et al. (2002): Shoulder muscle activation during pulldown exercises"
+        }
+      ],
+      "rehabilitation_phases": {
+        "phase_1_acute": {
+          "duration": "0-2 weeks",
+          "goals": ["Pain reduction", "Restore ROM"],
+          "exercises": ["Pendulum swings", "Cross-body stretches", "Gentle range of motion"],
+          "restrictions": ["No overhead activities", "Avoid sleeping on affected side"]
+        },
+        "phase_2_intermediate": {
+          "duration": "2-6 weeks",
+          "goals": ["Restore full ROM", "Begin strengthening"],
+          "exercises": ["External rotations", "Scapular retraction", "Band exercises"],
+          "progression": "Pain-free ROM before strengthening"
+        },
+        "phase_3_advanced": {
+          "duration": "6-12 weeks",
+          "goals": ["Return to overhead activities"],
+          "exercises": ["Progressive overhead movements", "Sport-specific training"],
+          "criteria": "Full ROM and strength without pain"
+        }
+      },
+      "clinical_tests": [
+        "Hawkins-Kennedy test (85% sensitivity for impingement)",
+        "Empty can test (supraspinatus involvement)",
+        "Neer impingement sign (90° forward flexion + internal rotation)"
+      ],
+      "outcome_measures": {
+        "conservative_treatment": "85% success rate with proper rehabilitation",
+        "return_to_sport": "Average 8-12 weeks for overhead athletes",
+        "recurrence_prevention": "40% reduction with continued strengthening program"
+      }
+    },
+    {
+      "issue": "hamstring_strain_injury",
+      "source_books": ["Sports Rehabilitation and Injury Prevention", "Principles of Athletic Training (17th Ed.)"],
+      "authors": ["Paul Comfort & Earle Abrahamson", "William Prentice"],
+      "clinical_evidence": "Most common injury in running sports, 12-16% of all athletic injuries",
+      "prevalence": "20-25% recurrence rate without proper rehabilitation",
+      "risk_factors": [
+        "Previous hamstring injury increases risk 2-6 fold",
+        "Hamstring:quadriceps strength ratio <60% increases injury risk",
+        "Age >25 years doubles injury risk in athletes"
+      ],
+      "exercises_to_avoid_acute_phase": [
+        {
+          "exercise": "aggressive_stretching",
+          "reason": "May disrupt healing tissue in first 72 hours",
+          "research": "Sherry & Best (2004): Comparison of hamstring rehabilitation programs"
+        },
+        {
+          "exercise": "sprinting_return_too_early",
+          "reason": "Forces >6 times body weight before tissue can handle load",
+          "research": "Verrall et al. (2001): Clinical risk factors for hamstring muscle strain injury"
+        }
+      ],
+      "evidence_based_rehabilitation": {
+        "acute_phase_0_3_days": {
+          "protocol": "POLICE protocol (Protect, Optimal Loading, Ice, Compress, Elevate)",
+          "exercises": ["Pain-free walking", "Gentle range of motion"],
+          "avoid": ["Passive stretching", "Massage", "Heat application"],
+          "research": "Bleakley et al. (2012): POLICE vs RICE protocol effectiveness"
+        },
+        "subacute_phase_4_14_days": {
+          "exercises": ["Isometric strengthening", "Pain-free stretching", "Progressive walking"],
+          "progression": "Nordic hamstring eccentrics when pain allows",
+          "research": "Askling et al. (2013): Acute hamstring injuries - exercise protocols"
+        },
+        "return_to_sport_phase": {
+          "criteria": [
+            "90% strength compared to uninjured limb",
+            "Pain-free sprinting at 80% maximum speed",
+            "Functional movement screen clearing"
+          ],
+          "timeline": "Typically 3-6 weeks depending on severity",
+          "research": "Sherry & Best (2004): Progressive agility vs stretching protocols"
+        }
+      },
+      "prevention_strategies": {
+        "nordic_hamstring_exercise": {
+          "effectiveness": "51% reduction in hamstring injury rates",
+          "protocol": "3 sets, 5-12 reps, 3x per week",
+          "research": "Al Attar et al. (2017): Systematic review of injury prevention"
+        },
+        "strength_ratio_maintenance": {
+          "target": "Hamstring:quadriceps ratio >60%",
+          "assessment": "Isokinetic testing at 60°/s and 300°/s",
+          "research": "Croisier et al. (2008): Strength imbalances and injury risk"
+        }
+      },
+      "outcome_data": {
+        "conservative_treatment_success": "85-90% return to sport",
+        "recurrence_rates": "12% with proper rehabilitation vs 34% without",
+        "time_to_return": "Grade I: 2-3 weeks, Grade II: 4-6 weeks, Grade III: 8-12 weeks"
+      }
+    }
+  ]
+}

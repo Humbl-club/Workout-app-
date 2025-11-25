@@ -1,0 +1,86 @@
+# REBLD Cursor Rules
+
+## ⛔ CRITICAL: NO NEW MARKDOWN FILES
+
+**NEVER create new .md files in this project.**
+
+This is a strict, non-negotiable rule to prevent documentation fragmentation.
+
+### The ONLY markdown files allowed:
+
+**Core Documentation Suite (7 permanent files):**
+1. MASTER_DOCUMENTATION.md - Single source of truth
+2. VISUAL_ARCHITECTURE.md - System diagrams
+3. CLAUDE.md - AI assistant instructions
+4. README.md - Public quick start
+5. CLERK_SETUP.md - Auth setup
+6. CONVEX_SETUP.GUIDE.md - Database setup
+7. DESIGN_SYSTEM.md - Design reference
+
+**Temporary (3 files max, delete after feature completion):**
+8. VERSION_1_FEATURES_PLAN.md
+9. COMPLETE_MOBILE_OVERHAUL.md
+10. PROGRESS_PHOTOS_IMPLEMENTATION_GUIDE.md
+
+### If you need to document something:
+
+✅ **DO:** Update MASTER_DOCUMENTATION.md (95% of cases)
+✅ **DO:** Update VISUAL_ARCHITECTURE.md (for diagrams)
+✅ **DO:** Update CLAUDE.md (for dev patterns)
+✅ **DO:** Update DESIGN_SYSTEM.md (for design tokens)
+
+❌ **NEVER:** Create STATUS.md, COMPLETE.md, PLAN.md, REPORT.md, GUIDE.md, or any other .md file
+
+### Why this rule exists:
+
+- We cleaned up from 105 fragmented files to 10 organized files (90% reduction)
+- Single source of truth prevents confusion and knowledge loss
+- Future developers know exactly where to look (MASTER_DOCUMENTATION.md)
+- AI assistants can be more productive with consolidated docs
+
+### Enforcement:
+
+- Pull requests creating new .md files should be rejected
+- If you see a new .md file, immediately move its content to the appropriate existing doc and delete it
+- This rule overrides any other documentation preferences
+
+### Exception Process:
+
+If you truly believe a new setup guide is needed (like CLERK_SETUP.md):
+1. First discuss with team
+2. Verify information can't fit in existing docs
+3. Get explicit approval
+4. Add to the core suite list above
+5. Update this .cursorrules file
+
+**Default answer:** Update MASTER_DOCUMENTATION.md instead.
+
+---
+
+## Code Quality Rules
+
+- Use TypeScript strict mode
+- Prefer interfaces from types.ts over inline types
+- Always handle errors with try/catch
+- Use Convex `ctx.auth.getUserIdentity()` for authentication (never trust client-provided userId)
+- No `any` types without justification
+- Functional components with hooks (no class components)
+
+## Security Rules
+
+- NEVER expose API keys client-side
+- Always verify authentication in Convex queries/mutations
+- Use crypto.getRandomValues() for secure random (never Math.random())
+- Sanitize user input (no dangerouslySetInnerHTML without sanitization)
+- Log errors properly (never silent .catch(() => {}))
+
+## Documentation Rules
+
+- After ANY significant change, update MASTER_DOCUMENTATION.md
+- Include code examples in documentation
+- Keep diagrams in VISUAL_ARCHITECTURE.md up to date
+- Document the "why" not just the "what"
+
+---
+
+**These rules are mandatory. Follow them strictly.**

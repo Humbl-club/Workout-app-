@@ -1,0 +1,374 @@
+{
+  "injury_data": {
+    "barbell_back_squat": {
+      "injury_contraindications": [
+        {
+          "injury_type": "knee_pain",
+          "severity": "caution",
+          "reason": "High knee flexion under load may aggravate patellofemoral pain",
+          "safe_modifications": [
+            "Reduce depth to above parallel",
+            "Widen stance to reduce knee angle",
+            "Use box squat variation",
+            "Reduce load significantly"
+          ],
+          "alternative_exercises": [
+            "goblet_squat",
+            "bulgarian_split_squat",
+            "leg_press",
+            "step_ups"
+          ]
+        },
+        {
+          "injury_type": "lower_back",
+          "severity": "caution",
+          "reason": "Axial loading with potential forward lean can stress lumbar spine",
+          "safe_modifications": [
+            "High bar position",
+            "Maintain strict form",
+            "Use belt for support",
+            "Reduce weight"
+          ],
+          "alternative_exercises": [
+            "front_squat",
+            "trap_bar_deadlift",
+            "belt_squat",
+            "single_leg_work"
+          ]
+        }
+      ],
+      "therapeutic_benefits": [
+        {
+          "condition": "knee_stability",
+          "benefit_level": "high",
+          "explanation": "Strengthens VMO and surrounding musculature for knee stability",
+          "recommended_protocol": "3x8-12 at 70% 1RM with 2 second eccentric"
+        }
+      ],
+      "sport_ratings": {
+        "boxing": 5,
+        "hyrox": 8,
+        "rock_climbing": 6,
+        "basketball": 9,
+        "soccer": 8,
+        "tennis": 7,
+        "running": 7,
+        "general_fitness": 9
+      }
+    },
+    "pull_up": {
+      "injury_contraindications": [
+        {
+          "injury_type": "shoulder_impingement",
+          "severity": "caution",
+          "reason": "Overhead position may aggravate impingement",
+          "safe_modifications": [
+            "Use neutral grip",
+            "Reduce range of motion",
+            "Focus on scapular control"
+          ],
+          "alternative_exercises": [
+            "lat_pulldown",
+            "neutral_grip_pulldown",
+            "seated_row",
+            "inverted_row"
+          ]
+        },
+        {
+          "injury_type": "elbow_tendinitis",
+          "severity": "monitor",
+          "reason": "Repetitive gripping can stress elbow tendons",
+          "safe_modifications": [
+            "Use straps",
+            "Vary grip width",
+            "Reduce volume"
+          ],
+          "alternative_exercises": [
+            "lat_pulldown_machine",
+            "cable_row"
+          ]
+        }
+      ],
+      "therapeutic_benefits": [
+        {
+          "condition": "shoulder_stability",
+          "benefit_level": "high",
+          "explanation": "Develops lat strength and scapular control",
+          "recommended_protocol": "3x5-8 with controlled tempo"
+        },
+        {
+          "condition": "posture_improvement",
+          "benefit_level": "high",
+          "explanation": "Counteracts forward shoulder position",
+          "recommended_protocol": "2-3x per week, focus on form"
+        }
+      ],
+      "sport_ratings": {
+        "boxing": 7,
+        "hyrox": 6,
+        "rock_climbing": 10,
+        "basketball": 6,
+        "soccer": 5,
+        "tennis": 6,
+        "running": 4,
+        "swimming": 8,
+        "general_fitness": 8
+      }
+    },
+    "plank": {
+      "injury_contraindications": [
+        {
+          "injury_type": "lower_back",
+          "severity": "monitor",
+          "reason": "Requires neutral spine maintenance",
+          "safe_modifications": [
+            "Shorter duration",
+            "Incline plank",
+            "Knees down variation"
+          ],
+          "alternative_exercises": [
+            "dead_bug",
+            "bird_dog",
+            "side_plank"
+          ]
+        }
+      ],
+      "therapeutic_benefits": [
+        {
+          "condition": "core_stability",
+          "benefit_level": "high",
+          "explanation": "Develops deep core stabilizers",
+          "recommended_protocol": "3x30-60 seconds"
+        },
+        {
+          "condition": "lower_back_health",
+          "benefit_level": "moderate",
+          "explanation": "Teaches neutral spine bracing",
+          "recommended_protocol": "Daily, progress duration gradually"
+        }
+      ],
+      "sport_ratings": {
+        "boxing": 8,
+        "hyrox": 7,
+        "rock_climbing": 8,
+        "basketball": 7,
+        "soccer": 7,
+        "tennis": 7,
+        "running": 8,
+        "swimming": 7,
+        "general_fitness": 9
+      }
+    },
+    "bench_press": {
+      "injury_contraindications": [
+        {
+          "injury_type": "shoulder_impingement",
+          "severity": "caution",
+          "reason": "Horizontal pressing can aggravate anterior shoulder",
+          "safe_modifications": [
+            "Reduce range of motion",
+            "Use dumbbells for freedom",
+            "Neutral grip",
+            "Reduce arch"
+          ],
+          "alternative_exercises": [
+            "dumbbell_press",
+            "floor_press",
+            "push_ups",
+            "cable_press"
+          ]
+        }
+      ],
+      "therapeutic_benefits": [
+        {
+          "condition": "upper_body_strength",
+          "benefit_level": "high",
+          "explanation": "Primary upper body strength builder",
+          "recommended_protocol": "3x5-8 progressive overload"
+        }
+      ],
+      "sport_ratings": {
+        "boxing": 8,
+        "hyrox": 5,
+        "rock_climbing": 4,
+        "basketball": 6,
+        "soccer": 5,
+        "tennis": 6,
+        "running": 3,
+        "general_fitness": 8
+      }
+    },
+    "deadlift": {
+      "injury_contraindications": [
+        {
+          "injury_type": "lower_back",
+          "severity": "caution",
+          "reason": "High spinal loading in hip hinge pattern",
+          "safe_modifications": [
+            "Trap bar deadlift",
+            "Sumo stance",
+            "Rack pulls",
+            "Reduce load"
+          ],
+          "alternative_exercises": [
+            "trap_bar_deadlift",
+            "romanian_deadlift",
+            "hip_thrust",
+            "kettlebell_swing"
+          ]
+        }
+      ],
+      "therapeutic_benefits": [
+        {
+          "condition": "posterior_chain",
+          "benefit_level": "high",
+          "explanation": "Develops entire posterior chain",
+          "recommended_protocol": "3x3-5 at 80-85%"
+        },
+        {
+          "condition": "functional_strength",
+          "benefit_level": "high",
+          "explanation": "Transfers to daily lifting patterns",
+          "recommended_protocol": null
+        }
+      ],
+      "sport_ratings": {
+        "boxing": 6,
+        "hyrox": 8,
+        "rock_climbing": 7,
+        "basketball": 7,
+        "soccer": 7,
+        "tennis": 7,
+        "running": 6,
+        "general_fitness": 9
+      }
+    },
+    "band_pull_apart": {
+      "injury_contraindications": [],
+      "therapeutic_benefits": [
+        {
+          "condition": "shoulder_health",
+          "benefit_level": "high",
+          "explanation": "Strengthens rear delts and rhomboids for shoulder balance",
+          "recommended_protocol": "3x20-30 daily"
+        },
+        {
+          "condition": "posture_improvement",
+          "benefit_level": "high",
+          "explanation": "Counteracts forward shoulder position",
+          "recommended_protocol": "100 reps daily in sets of 20-30"
+        }
+      ],
+      "sport_ratings": {
+        "boxing": 7,
+        "hyrox": 6,
+        "rock_climbing": 8,
+        "basketball": 6,
+        "soccer": 6,
+        "tennis": 7,
+        "running": 5,
+        "swimming": 8,
+        "general_fitness": 8
+      }
+    },
+    "hip_flexor_stretch": {
+      "injury_contraindications": [],
+      "therapeutic_benefits": [
+        {
+          "condition": "hip_mobility",
+          "benefit_level": "high",
+          "explanation": "Improves hip extension and reduces anterior pelvic tilt",
+          "recommended_protocol": "2x30 seconds each side, twice daily"
+        },
+        {
+          "condition": "lower_back_health",
+          "benefit_level": "moderate",
+          "explanation": "Reduces compensatory lumbar extension",
+          "recommended_protocol": null
+        }
+      ],
+      "sport_ratings": {
+        "boxing": 6,
+        "hyrox": 7,
+        "rock_climbing": 6,
+        "basketball": 7,
+        "soccer": 8,
+        "tennis": 7,
+        "running": 9,
+        "general_fitness": 8
+      }
+    },
+    "sled_push": {
+      "injury_contraindications": [
+        {
+          "injury_type": "knee_pain",
+          "severity": "monitor",
+          "reason": "High quad demand under load",
+          "safe_modifications": [
+            "Reduce load",
+            "Shorter distances",
+            "Higher handles"
+          ],
+          "alternative_exercises": [
+            "leg_press",
+            "bike_intervals"
+          ]
+        }
+      ],
+      "therapeutic_benefits": [
+        {
+          "condition": "functional_power",
+          "benefit_level": "high",
+          "explanation": "Develops total body power and conditioning",
+          "recommended_protocol": "5x25m heavy, 10x50m light"
+        }
+      ],
+      "sport_ratings": {
+        "boxing": 7,
+        "hyrox": 10,
+        "rock_climbing": 4,
+        "basketball": 7,
+        "soccer": 8,
+        "tennis": 6,
+        "running": 6,
+        "general_fitness": 7
+      }
+    },
+    "wall_ball": {
+      "injury_contraindications": [
+        {
+          "injury_type": "shoulder_impingement",
+          "severity": "monitor",
+          "reason": "Overhead throwing motion",
+          "safe_modifications": [
+            "Reduce height",
+            "Lighter ball",
+            "Chest pass variation"
+          ],
+          "alternative_exercises": [
+            "goblet_squat",
+            "thrusters_light"
+          ]
+        }
+      ],
+      "therapeutic_benefits": [
+        {
+          "condition": "metabolic_conditioning",
+          "benefit_level": "high",
+          "explanation": "Full body metabolic exercise",
+          "recommended_protocol": "EMOM sets of 15-20"
+        }
+      ],
+      "sport_ratings": {
+        "boxing": 6,
+        "hyrox": 10,
+        "rock_climbing": 5,
+        "basketball": 8,
+        "soccer": 7,
+        "tennis": 6,
+        "running": 5,
+        "general_fitness": 8
+      }
+    }
+  }
+}

@@ -11,10 +11,11 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'import.meta.env.VITE_USE_EMULATORS': JSON.stringify(env.VITE_USE_EMULATORS || env.USE_EMULATORS || '')
+        // SECURITY: API keys moved to server-side (Convex actions)
+        // Only expose public keys and non-sensitive config
+        'import.meta.env.VITE_CLERK_PUBLISHABLE_KEY': JSON.stringify(env.VITE_CLERK_PUBLISHABLE_KEY || ''),
+        'import.meta.env.VITE_USE_EMULATORS': JSON.stringify(env.VITE_USE_EMULATORS || env.USE_EMULATORS || ''),
+        'import.meta.env.VITE_CONVEX_URL': JSON.stringify(env.VITE_CONVEX_URL || '')
       },
       resolve: {
         alias: {

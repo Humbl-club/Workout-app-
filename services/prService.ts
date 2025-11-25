@@ -121,3 +121,64 @@ export const shouldTrackPR = (exerciseName: string): boolean => {
 
   return !excludeKeywords.some(keyword => name.includes(keyword));
 };
+
+/**
+ * Check if user is close to a PR and calculate progress
+ */
+export const checkPRProgress = (
+  exerciseName: string,
+  currentWeight: number,
+  currentReps: number,
+  allLogs: WorkoutLog[]
+): { isPRPossible: boolean; progress: number; currentPR: { weight: number; reps: number } | null } => {
+  if (!shouldTrackPR(exerciseName)) {
+    return { isPRPossible: false, progress: 0, currentPR: null };
+  }
+
+  // Get current PR
+  const exerciseHistory: Array<{ weight: number; reps: number }> = [];
+
+  allLogs.forEach(log => {
+    const exercise = log.exercises.find(ex => ex.exercise_name === exerciseName);
+    if (exercise) {
+      exercise.sets.forEach(set => {
+        if ('weight' in set && 'reps' in set) {
+          exerciseHistory.push({
+            weight: Number(set.weight),
+            reps: Number(set.reps)
+          });
+        }
+      });
+    }
+  });
+
+  if (exerciseHistory.length === 0) {
+    return { isPRPossible: false, progress: 0, currentPR: null };
+  }
+
+  // Find best weight
+  let bestWeight = 0;
+  let bestReps = 0;
+
+  exerciseHistory.forEach(perf => {
+    if (perf.weight > bestWeight || (perf.weight === bestWeight && perf.reps > bestReps)) {
+      bestWeight = perf.weight;
+      bestReps = perf.reps;
+    }
+  });
+
+  const currentPR = { weight: bestWeight, reps: bestReps };
+
+  // Calculate progress (within 10% of PR weight)
+  const threshold = bestWeight * 0.90; // 90% of PR weight
+  const isPRPossible = currentWeight >= threshold && currentWeight <= bestWeight;
+
+  // Progress calculation (90% = 0%, 100% = 100%)
+  const progress = Math.min(100, Math.max(0, ((currentWeight - threshold) / (bestWeight - threshold)) * 100));
+
+  return {
+    isPRPossible,
+    progress: Math.round(progress),
+    currentPR
+  };
+};

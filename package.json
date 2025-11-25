@@ -6,28 +6,39 @@
   "scripts": {
     "dev": "vite",
     "tunnel": "npx localtunnel --port 3000",
-    "emulators": "firebase emulators:start --only firestore,auth",
     "build": "vite build",
-    "preview": "vite preview",
-    "fb:health": "node scripts/firestore_healthcheck.mjs",
-    "fb:scan": "node scripts/firestore_tools.mjs scan --depth=2 --limit=50 --maxDocs=5000",
-    "fb:dump": "node scripts/firestore_tools.mjs dump --out=.data/firestore_dump.jsonl --depth=10 --limit=1000 --maxDocs=200000",
-    "fb:list": "node scripts/firestore_tools.mjs list",
-    "fb:get": "node scripts/firestore_tools.mjs get",
-    "fb:findid": "node scripts/firestore_tools.mjs findid",
-    "fb:counts": "node scripts/firestore_tools.mjs counts"
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@dataconnect/generated": "file:src/dataconnect-generated",
+    "@capacitor/cli": "^7.4.4",
+    "@capacitor/core": "^7.4.4",
+    "@capacitor/haptics": "^7.0.2",
+    "@capacitor/ios": "^7.4.4",
+    "@capacitor/keyboard": "^7.0.3",
+    "@capacitor/splash-screen": "^7.0.3",
+    "@capacitor/status-bar": "^7.0.3",
+    "@clerk/clerk-react": "^5.53.4",
     "@google/genai": "^1.27.0",
-    "firebase": "^12.4.0",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-use-controllable-state": "^1.2.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "convex": "^1.28.2",
+    "date-fns": "^4.1.0",
+    "i18next": "^25.6.2",
+    "i18next-browser-languagedetector": "^8.2.0",
+    "jotai": "^2.15.1",
+    "lucide-react": "^0.552.0",
+    "radix-ui": "^1.4.3",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "react-i18next": "^16.3.3",
+    "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
-    "firebase-admin": "^13.0.2",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "dotenv": "^17.2.3",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

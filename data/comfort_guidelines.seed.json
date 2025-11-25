@@ -1,0 +1,46 @@
+[
+  {
+    "tag": "avoid_high_impact",
+    "guidelines": [
+      "Limit jump volume; prefer low-bounce cardio (bike, row, sled)",
+      "Use controlled landings and low box heights if plyos are needed"
+    ],
+    "alternatives": [
+      "Bike intervals",
+      "Rowing intervals",
+      "Sled push/pull",
+      "Step-ups"
+    ],
+    "source": "User comfort preference",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "tag": "avoid_chest_dominant",
+    "guidelines": [
+      "Limit heavy chest-dominant pressing; use neutral-grip or cables",
+      "Prioritize back/shoulder balance and posture work"
+    ],
+    "alternatives": [
+      "Neutral-grip dumbbell press",
+      "Cable chest press",
+      "Landmine press",
+      "Push-up on handles"
+    ],
+    "source": "User comfort preference",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "tag": "prefer_neutral_grip",
+    "guidelines": [
+      "Use neutral-grip pressing/pulling to reduce shoulder discomfort",
+      "Swap straight-bar work for neutral handles or dumbbells"
+    ],
+    "alternatives": [
+      "Neutral-grip DB press",
+      "Neutral-grip pull-up or lat pulldown",
+      "Neutral cable row"
+    ],
+    "source": "User comfort preference",
+    "last_reviewed": "2025-01-01"
+  }
+]

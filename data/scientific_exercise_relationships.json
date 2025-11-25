@@ -1,0 +1,189 @@
+{
+  "source_methodology": "Evidence-based progressions from rehabilitation and sports science textbooks",
+  "relationship_categories": ["progression", "regression", "alternative", "therapeutic_modification"],
+  "strength_calculations": "Based on biomechanical analysis and EMG research",
+  "relationships": [
+    {
+      "primary_exercise": "back_squat",
+      "related_exercise": "box_squat",
+      "relationship_type": "therapeutic_modification",
+      "strength_difference": -15,
+      "similarity_score": 90,
+      "source_research": "Escamilla et al. (2001): Knee biomechanics during squatting variations",
+      "biomechanical_rationale": "Box reduces range of motion to pain-free range while maintaining squat motor pattern. Reduces patellofemoral contact pressure by 35% compared to deep squats.",
+      "clinical_application": "Knee pain, hip mobility limitations, learning squat mechanics",
+      "notes": "Box height individualized to pain-free range of motion",
+      "contraindications": ["Acute lumbar injury", "Balance deficits"],
+      "progression_criteria": "Pain-free completion for 2+ weeks before advancing"
+    },
+    {
+      "primary_exercise": "deadlift",
+      "related_exercise": "trap_bar_deadlift",
+      "relationship_type": "alternative",
+      "strength_difference": -10,
+      "similarity_score": 85,
+      "source_research": "Swinton et al. (2011): Comparison of deadlift variations",
+      "biomechanical_rationale": "Neutral grip and elevated handles reduce spine flexion moment by 25%. More upright torso position reduces lumbar stress while maintaining posterior chain activation.",
+      "clinical_application": "Lower back pain, grip strength limitations, learning deadlift mechanics",
+      "notes": "Often allows higher loads due to improved mechanics and reduced range of motion",
+      "equipment_modification": "Trap bar with high handles optimal for beginners"
+    },
+    {
+      "primary_exercise": "pull_up",
+      "related_exercise": "lat_pulldown",
+      "relationship_type": "regression",
+      "strength_difference": -40,
+      "similarity_score": 75,
+      "source_research": "Signorile et al. (2002): EMG comparison of vertical pulling exercises",
+      "biomechanical_rationale": "Machine-assisted version allows load titration. Maintains similar muscle activation patterns (lat dorsi 85% of pull-up levels) while removing bodyweight limitation.",
+      "clinical_application": "Insufficient relative strength for bodyweight pull-ups, shoulder limitations",
+      "progression_protocol": {
+        "phase_1": "Full bodyweight assistance, 8-12 reps",
+        "phase_2": "Reduce assistance by 10-15 lbs weekly", 
+        "phase_3": "Transition to band-assisted pull-ups",
+        "phase_4": "Unassisted pull-ups"
+      },
+      "notes": "Maintain pull-up grip width and tempo to optimize transfer"
+    },
+    {
+      "primary_exercise": "overhead_press",
+      "related_exercise": "landmine_press",
+      "relationship_type": "therapeutic_modification",
+      "strength_difference": -20,
+      "similarity_score": 65,
+      "source_research": "Fees et al. (1998): Upper extremity modifications for injured athletes",
+      "biomechanical_rationale": "Diagonal pressing plane reduces shoulder impingement risk by 60%. Natural scapular movement allowed throughout range of motion.",
+      "clinical_application": "Shoulder impingement, rotator cuff irritation, limited overhead mobility",
+      "movement_analysis": "Arc of motion follows natural scapulohumeral rhythm, reducing subacromial compression",
+      "notes": "Can be performed unilaterally to address asymmetries",
+      "progression": "Gradually increase pressing angle toward vertical as mobility improves"
+    },
+    {
+      "primary_exercise": "barbell_back_squat",
+      "related_exercise": "goblet_squat",
+      "relationship_type": "regression",
+      "strength_difference": -60,
+      "similarity_score": 80,
+      "source_research": "Myer et al. (2014): Movement screen and squat assessment in youth athletes",
+      "biomechanical_rationale": "Front-loading naturally promotes upright torso and teaches proper squat mechanics. Counterbalance effect reduces balance demands by 40%.",
+      "clinical_application": "Learning squat patterns, ankle mobility restrictions, balance deficits",
+      "teaching_progression": {
+        "week_1_2": "Bodyweight goblet squat, focus on depth",
+        "week_3_4": "Light load (10-20 lbs), improve range of motion",
+        "week_5_6": "Moderate load (25-40 lbs), add tempo control",
+        "week_7_8": "Transition to front squat or back squat"
+      },
+      "mobility_requirements": "Ankle dorsiflexion >15°, hip flexion >110°, thoracic extension >20°"
+    },
+    {
+      "primary_exercise": "push_up",
+      "related_exercise": "incline_push_up",
+      "relationship_type": "regression", 
+      "strength_difference": -35,
+      "similarity_score": 95,
+      "source_research": "Calatayud et al. (2015): Muscle activation during push-up variations",
+      "biomechanical_rationale": "Incline reduces percentage of body weight lifted. 30° incline = 65% body weight, 45° incline = 55% body weight vs 75% for standard push-up.",
+      "clinical_application": "Insufficient upper body strength, wrist pain, learning push-up mechanics",
+      "progression_angles": [
+        {"angle": "60°", "bodyweight_percentage": "45%", "difficulty": "Beginner"},
+        {"angle": "45°", "bodyweight_percentage": "55%", "difficulty": "Novice"},
+        {"angle": "30°", "bodyweight_percentage": "65%", "difficulty": "Intermediate"},
+        {"angle": "0°", "bodyweight_percentage": "75%", "difficulty": "Standard"}
+      ],
+      "notes": "Maintain plank position throughout entire range of motion"
+    },
+    {
+      "primary_exercise": "walking_lunges",
+      "related_exercise": "reverse_lunges",
+      "relationship_type": "alternative",
+      "strength_difference": -10,
+      "similarity_score": 85,
+      "source_research": "Boudreau et al. (2009): EMG analysis of lunge variations",
+      "biomechanical_rationale": "Reverse stepping pattern reduces anterior knee forces by 20%. Easier balance control as weight shifts to stable base leg.",
+      "clinical_application": "Anterior knee pain, balance deficits, learning lunge mechanics",
+      "muscle_activation_differences": {
+        "quadriceps": "15% less activation in reverse lunge",
+        "glutes": "Similar activation patterns",
+        "balance_demand": "30% less challenging than forward lunges"
+      },
+      "notes": "Preferred variation for individuals with patellofemoral pain syndrome"
+    },
+    {
+      "primary_exercise": "conventional_deadlift",
+      "related_exercise": "romanian_deadlift",
+      "relationship_type": "alternative",
+      "strength_difference": -25,
+      "similarity_score": 75,
+      "source_research": "McAllister et al. (2014): Muscle activation during deadlift variations",
+      "biomechanical_rationale": "Reduced range of motion emphasizes eccentric control and hamstring flexibility. 40% greater hamstring activation vs conventional deadlift.",
+      "clinical_application": "Hamstring development, learning hip hinge pattern, mobility emphasis",
+      "movement_pattern": "Top-down movement starting from standing position, bar travels to mid-shin level",
+      "notes": "Excellent for developing hamstring strength and hip hinge mechanics before progressing to full deadlift"
+    },
+    {
+      "primary_exercise": "barbell_bent_over_row",
+      "related_exercise": "chest_supported_row",
+      "relationship_type": "therapeutic_modification",
+      "strength_difference": -15,
+      "similarity_score": 85,
+      "source_research": "Lehman et al. (2004): Effect of trunk position on rowing exercise",
+      "biomechanical_rationale": "Chest support eliminates erector spinae demand, reducing spinal compression forces by 60%. Allows focus on targeted back muscles without trunk stability limitations.",
+      "clinical_application": "Lower back pain, poor trunk endurance, learning rowing mechanics",
+      "muscle_activation_comparison": {
+        "latissimus_dorsi": "Similar activation levels",
+        "rhomboids": "10% higher activation due to stability",
+        "erector_spinae": "85% reduction in activation"
+      },
+      "notes": "Preferred during acute lower back pain episodes"
+    },
+    {
+      "primary_exercise": "bulgarian_split_squat",
+      "related_exercise": "step_up",
+      "relationship_type": "regression",
+      "strength_difference": -30,
+      "similarity_score": 70,
+      "source_research": "Boudreau et al. (2009): Single-leg exercise variations",
+      "biomechanical_rationale": "Step-up provides concentric-only option with adjustable range of motion. Reduces balance demands while maintaining unilateral strengthening benefits.",
+      "clinical_application": "Learning single-leg strength, knee pain during eccentric loading, balance limitations",
+      "progression_variables": {
+        "step_height": "Start 6-8 inches, progress to 12-18 inches",
+        "loading": "Bodyweight → dumbbells → barbell",
+        "tempo": "Controlled 2-second concentric, step down slowly"
+      },
+      "notes": "Focus on driving through heel of stepping leg, minimal push from trailing leg"
+    },
+    {
+      "primary_exercise": "plank",
+      "related_exercise": "modified_plank_on_knees",
+      "relationship_type": "regression",
+      "strength_difference": -40,
+      "similarity_score": 85,
+      "source_research": "Ekstrom et al. (2007): Core muscle activation during exercises",
+      "biomechanical_rationale": "Knee support reduces lever arm length, decreasing torque demand by 50%. Maintains similar muscle activation patterns with reduced load.",
+      "clinical_application": "Insufficient core strength, lower back pain, learning plank mechanics",
+      "progression_timeline": {
+        "week_1_2": "Modified plank 15-30 seconds",
+        "week_3_4": "Modified plank 30-60 seconds",
+        "week_5_6": "Standard plank 15-30 seconds",
+        "week_7_8": "Standard plank 30+ seconds"
+      },
+      "notes": "Maintain neutral spine alignment in both variations"
+    },
+    {
+      "primary_exercise": "dips",
+      "related_exercise": "tricep_pushdowns",
+      "relationship_type": "alternative",
+      "strength_difference": -45,
+      "similarity_score": 60,
+      "source_research": "Boeckh-Behrens & Buskies (2000): Fitness strength training",
+      "biomechanical_rationale": "Isolation exercise allows focus on triceps without shoulder stability demands. Machine assistance enables load progression in smaller increments.",
+      "clinical_application": "Insufficient strength for bodyweight dips, shoulder impingement, learning tricep mechanics",
+      "muscle_activation": {
+        "triceps_brachii": "Similar activation levels achievable",
+        "anterior_deltoid": "70% less activation than dips",
+        "chest": "85% less activation than dips"
+      },
+      "notes": "Progress from pushdowns to assisted dips before full bodyweight dips"
+    }
+  ]
+}

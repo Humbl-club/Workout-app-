@@ -1,75 +1,50 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useMutation } from "convex/react";
+import { useUser } from '@clerk/clerk-react';
+import { api } from "../convex/_generated/api";
 import { WorkoutLog } from '../types';
-import { db } from '../firebase';
-import { collection, addDoc, query, onSnapshot, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore';
 
-// Omit 'id' and 'date' because Firestore will generate them
+// Omit 'id' and 'date' because Convex will generate them
 type NewLog = Omit<WorkoutLog, 'id' | 'date'>;
 
-export default function useWorkoutLogs(userId: string | null) {
-    const [logs, setLogs] = useState<WorkoutLog[]>([]);
-    const [logsLoaded, setLogsLoaded] = useState(false);
+export default function useWorkoutLogs() {
+    const { user } = useUser();
+    const userId = user?.id || null;
+    
+    const logs = useQuery(
+        api.queries.getWorkoutLogs,
+        userId ? { userId } : "skip"
+    );
+    const addLogMutation = useMutation(api.mutations.addWorkoutLog);
 
-    useEffect(() => {
-        if (!userId) {
-            setLogs([]);
-            setLogsLoaded(true);
-            return;
-        }
-
-        setLogsLoaded(false);
-        const logsCollectionRef = collection(db, 'users', userId, 'logs');
-        const q = query(logsCollectionRef, orderBy('date', 'desc'));
-
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const fetchedLogs: WorkoutLog[] = [];
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const date = data.date;
-
-                let dateISO: string;
-                if (date && typeof date.toDate === 'function') {
-                    dateISO = (date as Timestamp).toDate().toISOString();
-                } else if (date) {
-                    // Handle cases where it might already be an ISO string or a Date object
-                    dateISO = new Date(date).toISOString();
-                } else {
-                    // Fallback if date is null/undefined
-                    dateISO = new Date().toISOString();
-                }
-                
-                fetchedLogs.push({
-                    id: doc.id,
-                    ...data,
-                    date: dateISO,
-                } as WorkoutLog);
-            });
-            setLogs(fetchedLogs);
-            setLogsLoaded(true);
-        }, (error) => {
-            console.error("Failed to load logs from Firestore", error);
-            setLogsLoaded(true);
-        });
-
-        return () => unsubscribe(); // Cleanup listener on component unmount
-    }, [userId]);
-
-    const addLog = useCallback(async (newLog: NewLog) => {
-        if (!userId) {
-            console.error("Cannot add log. User not logged in.");
-            return;
-        }
+    const addLog = async (newLog: NewLog) => {
+        if (!userId) return;
         
         try {
-            const logsCollectionRef = collection(db, 'users', userId, 'logs');
-            await addDoc(logsCollectionRef, {
-                ...newLog,
-                date: serverTimestamp(),
+            await addLogMutation({
+                userId,
+                focus: newLog.focus,
+                exercises: newLog.exercises,
+                durationMinutes: newLog.durationMinutes || undefined,
             });
         } catch (e) {
-            console.error("Failed to save log to Firestore", e);
+            console.error("Failed to save log to Convex", e);
         }
-    }, [userId]);
+    };
 
-    return { logs, addLog, logsLoaded };
+    // Convert Convex logs to WorkoutLog format
+    const formattedLogs: WorkoutLog[] = logs ? logs.map(log => ({
+        id: log._id,
+        date: log.date,
+        focus: log.focus,
+        exercises: log.exercises,
+        durationMinutes: log.durationMinutes || undefined,
+    })) : [];
+
+    const logsLoaded = logs !== undefined || !userId;
+
+    return { 
+        logs: formattedLogs, 
+        addLog, 
+        logsLoaded 
+    };
 }

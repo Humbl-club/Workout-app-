@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import { WorkoutLog, WorkoutPlan } from '../types';
 import { LogoIcon, SignOutIcon, DumbbellIcon } from '../components/icons';
-import { auth } from '../firebase';
-import { signOut } from 'firebase/auth';
+import { useClerk, useUser } from '@clerk/clerk-react';
+import PerformanceAnalytics from '../components/PerformanceAnalytics';
+import useUserProfile from '../hooks/useUserProfile';
 
 interface DashboardPageProps {
     logs: WorkoutLog[];
@@ -14,9 +15,9 @@ const isSameDay = (d1: Date, d2: Date) => d1.getFullYear() === d2.getFullYear() 
 const getDayStart = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
 const StatCard: React.FC<{ title: string; value: string | number; description: string; accent?: boolean }> = ({ title, value, description, accent = false }) => (
-    <div className={`bg-[var(--surface)] border rounded-xl p-5 ${accent ? 'border-[var(--accent)]' : 'border-[var(--border)]'}`} style={{ boxShadow: accent ? 'var(--glow-red)' : 'var(--shadow-sm)' }}>
+    <div className={`bg-[var(--surface)] border rounded-xl p-5 shadow-card ${accent ? 'border-[var(--accent)] shadow-md' : 'border-[var(--border)]'}`}>
         <p className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] mb-2">{title}</p>
-        <p className={`font-syne text-4xl font-bold mt-1 mb-1 ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{value}</p>
+        <p className={`text-4xl font-bold mt-1 mb-1 ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{value}</p>
         <p className="text-[13px] text-[var(--text-secondary)]">{description}</p>
     </div>
 );
@@ -31,7 +32,7 @@ const WeeklyVolumeChart: React.FC<{ data: { day: string; volume: number }[] }> =
     return (
         <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5" style={{ boxShadow: 'var(--shadow-sm)' }}>
             <p className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] mb-2">WEEKLY VOLUME</p>
-            <h3 className="font-syne text-xl font-bold text-[var(--text-primary)] mb-5">Training Load</h3>
+            <h3 className="text-xl font-bold text-[var(--text-primary)] mb-5">Training Load</h3>
             <div className="h-48 flex justify-between items-end gap-3">
                 {chartData.map(({ day, volume }, index) => (
                     <div key={index} className="flex-1 flex flex-col items-center justify-end h-full group">
@@ -52,6 +53,9 @@ const WeeklyVolumeChart: React.FC<{ data: { day: string; volume: number }[] }> =
 const KEY_LIFTS = ['squat', 'bench', 'deadlift', 'overhead press', 'ohp'];
 
 export default function DashboardPage({ logs, plan }: DashboardPageProps) {
+    const { user } = useUser();
+    const { userProfile } = useUserProfile();
+    const userId = user?.id || null;
 
     const analytics = useMemo(() => {
         const safeLogs = Array.isArray(logs) ? logs : [];
@@ -142,15 +146,17 @@ export default function DashboardPage({ logs, plan }: DashboardPageProps) {
         };
     }, [logs]);
 
+    const { signOut } = useClerk();
+    
     const handleSignOut = async () => {
-        try { await signOut(auth); } catch (error) { console.error("Error signing out: ", error); }
+        try { await signOut(); } catch (error) { console.error("Error signing out: ", error); }
     };
 
     return (
         <div className="w-full max-w-2xl mx-auto px-5 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] animate-fade-in flex-1">
             <header className="mb-8">
                 <p className="text-[11px] uppercase tracking-wide text-[var(--text-tertiary)] font-semibold mb-2">YOUR PROGRESS</p>
-                <h1 className="font-syne text-3xl font-bold text-[var(--text-primary)] leading-tight">Dashboard</h1>
+                <h1 className="text-3xl font-bold text-[var(--text-primary)] leading-tight">Dashboard</h1>
             </header>
 
             <main className="space-y-5 pb-4">
@@ -174,7 +180,7 @@ export default function DashboardPage({ logs, plan }: DashboardPageProps) {
                 {analytics.keyLiftProgress.length > 0 && (
                      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5" style={{ boxShadow: 'var(--shadow-sm)' }}>
                         <p className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-tertiary)] mb-2">STRENGTH GAINS</p>
-                        <h3 className="font-syne text-xl font-bold text-[var(--text-primary)] mb-5">Key Lifts</h3>
+                        <h3 className="text-xl font-bold text-[var(--text-primary)] mb-5">Key Lifts</h3>
                         <div className="space-y-3">
                             {analytics.keyLiftProgress.map(lift => (
                                 <div key={lift.name} className="flex justify-between items-center bg-[var(--surface-secondary)] p-4 rounded-lg">
@@ -188,12 +194,20 @@ export default function DashboardPage({ logs, plan }: DashboardPageProps) {
                     </div>
                 )}
 
+                {/* Performance Analytics for Sport-Specific Training */}
+                {userId && userProfile?.trainingPreferences?.sport_specific && (
+                    <PerformanceAnalytics 
+                        userId={userId}
+                        sport={userProfile.trainingPreferences.sport_specific}
+                    />
+                )}
+
                 {analytics.totalWorkouts < 2 && (
                     <div className="text-center py-12 flex flex-col items-center justify-center bg-[var(--surface)] border border-[var(--border)] rounded-xl" style={{ boxShadow: 'var(--shadow-sm)' }}>
                         <div className="w-16 h-16 bg-[var(--surface-secondary)] rounded-lg flex items-center justify-center mb-4">
                             <DumbbellIcon className="h-8 w-8 text-[var(--text-tertiary)]"/>
                         </div>
-                        <h3 className="font-syne text-xl font-bold text-[var(--text-primary)]">Start Training</h3>
+                        <h3 className="text-xl font-bold text-[var(--text-primary)]">Start Training</h3>
                         <p className="mt-2 text-[14px] text-[var(--text-secondary)] max-w-xs px-4">Log a few workouts to see your progress analytics.</p>
                     </div>
                 )}

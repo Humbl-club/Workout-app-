@@ -1,107 +1,124 @@
-import { db } from '../firebase';
-import { collection, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import React from 'react';
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../convex/_generated/api";
 import { explainExercise } from './geminiService';
 
 /**
  * Exercise Explanation Caching Service
- * Checks Firebase cache before calling Gemini API
- * Populated using your Gemini Ultra subscription
+ * Checks Convex cache before calling Gemini API
  */
-
-interface CachedExercise {
-  exercise_name: string;
-  explanation: string;
-  muscles_worked?: string[];
-  form_cue?: string;
-  common_mistake?: string;
-  generated_at: any;
-  hit_count: number;
-  last_accessed: any;
-  source: 'gemini_ultra' | 'gemini_api';
-}
 
 /**
- * Get cached exercise explanation from Firebase
- * Returns null if not cached
+ * Hook to get cached exercise explanation from Convex
+ * Returns the explanation if cached, null otherwise
  */
-export const getCachedExplanation = async (exerciseName: string): Promise<string | null> => {
-  try {
-    const normalized = exerciseName.toLowerCase().trim().replace(/\s+/g, '_');
-    const docRef = doc(db, 'exercises_cache', normalized);
-    const snapshot = await getDoc(docRef);
+export const useCachedExplanation = (exerciseName: string) => {
+  const cached = useQuery(
+    api.queries.getCachedExercise,
+    exerciseName ? { exerciseName } : "skip"
+  );
+  const updateAccess = useMutation(api.mutations.updateCachedExerciseAccess);
+  const cacheExplanation = useMutation(api.mutations.cacheExerciseExplanation);
 
-    if (snapshot.exists()) {
-      const data = snapshot.data() as CachedExercise;
+  const getCachedExplanation = async (): Promise<string | null> => {
+    if (!cached) return null;
 
-      // Update hit count and last accessed
-      await setDoc(docRef, {
-        hit_count: (data.hit_count || 0) + 1,
-        last_accessed: serverTimestamp()
-      }, { merge: true });
-
-      return data.explanation;
+    // Update hit count and last accessed
+    try {
+      await updateAccess({ exerciseName });
+    } catch (error) {
+      console.error('Error updating cached exercise access:', error);
     }
 
-    return null;
-  } catch (error) {
-    console.error('Error getting cached explanation:', error);
-    return null;
-  }
+    return cached.explanation || null;
+  };
+
+  const cacheExplanationLocal = async (
+    explanation: string,
+    source: 'gemini_ultra' | 'gemini_api' = 'gemini_api'
+  ) => {
+    try {
+      await cacheExplanation({
+        exerciseName,
+        explanation,
+        source,
+      });
+    } catch (error) {
+      console.error('Error caching explanation:', error);
+    }
+  };
+
+  return { getCachedExplanation, cacheExplanationLocal, cached };
 };
 
 /**
- * Cache an exercise explanation to Firebase
+ * Get exercise explanation with caching (hook version)
+ * Checks cache first, falls back to API
  */
+export const useExerciseExplanationWithCache = (
+  exerciseName: string,
+  exerciseNotes?: string
+) => {
+  const { getCachedExplanation, cacheExplanationLocal } = useCachedExplanation(exerciseName);
+  const [explanation, setExplanation] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    const fetchExplanation = async () => {
+      setLoading(true);
+      
+      // Try cache first
+      const cached = await getCachedExplanation();
+      if (cached) {
+        console.log(`Cache HIT for: ${exerciseName}`);
+        setExplanation(cached);
+        setLoading(false);
+        return;
+      }
+
+      console.log(`Cache MISS for: ${exerciseName} - calling API`);
+
+      // Not cached - call Gemini API
+      const apiExplanation = await explainExercise(exerciseName, exerciseNotes);
+
+      // Cache it for next time
+      await cacheExplanationLocal(apiExplanation, 'gemini_api');
+
+      setExplanation(apiExplanation);
+      setLoading(false);
+    };
+
+    if (exerciseName) {
+      fetchExplanation();
+    }
+  }, [exerciseName, exerciseNotes]);
+
+  return { explanation, loading };
+};
+
+// Legacy async functions for backwards compatibility
+export const getCachedExplanation = async (exerciseName: string): Promise<string | null> => {
+  console.warn("getCachedExplanation: Use useCachedExplanation hook instead");
+  return null;
+};
+
 export const cacheExplanation = async (
   exerciseName: string,
   explanation: string,
   source: 'gemini_ultra' | 'gemini_api' = 'gemini_api'
 ) => {
-  try {
-    const normalized = exerciseName.toLowerCase().trim().replace(/\s+/g, '_');
-    await setDoc(doc(db, 'exercises_cache', normalized), {
-      exercise_name: exerciseName,
-      explanation,
-      generated_at: serverTimestamp(),
-      hit_count: 1,
-      last_accessed: serverTimestamp(),
-      source
-    });
-  } catch (error) {
-    console.error('Error caching explanation:', error);
-  }
+  console.warn("cacheExplanation: Use useCachedExplanation hook instead");
 };
 
-/**
- * Get exercise explanation with caching
- * Checks cache first, falls back to API
- */
 export const getExerciseExplanationWithCache = async (
   exerciseName: string,
   exerciseNotes?: string
 ): Promise<string> => {
-  // Try cache first
-  const cached = await getCachedExplanation(exerciseName);
-  if (cached) {
-    console.log(`Cache HIT for: ${exerciseName}`);
-    return cached;
-  }
-
-  console.log(`Cache MISS for: ${exerciseName} - calling API`);
-
-  // Not cached - call Gemini API
-  const explanation = await explainExercise(exerciseName, exerciseNotes);
-
-  // Cache it for next time
-  await cacheExplanation(exerciseName, explanation, 'gemini_api');
-
-  return explanation;
+  console.warn("getExerciseExplanationWithCache: Use useExerciseExplanationWithCache hook instead");
+  // Fallback to direct API call
+  return explainExercise(exerciseName, exerciseNotes);
 };
 
-/**
- * Batch upload exercise explanations (for manual population via Gemini Ultra)
- * You'll use this to upload the JSON you generate on gemini.google.com
- */
 export const batchUploadExercises = async (exercises: Array<{
   name: string;
   explanation: string;
@@ -109,21 +126,6 @@ export const batchUploadExercises = async (exercises: Array<{
   form_cue?: string;
   mistake?: string;
 }>) => {
-  const batch = exercises.map(async (ex) => {
-    const normalized = ex.name.toLowerCase().trim().replace(/\s+/g, '_');
-    return setDoc(doc(db, 'exercises_cache', normalized), {
-      exercise_name: ex.name,
-      explanation: ex.explanation,
-      muscles_worked: ex.muscles || [],
-      form_cue: ex.form_cue || '',
-      common_mistake: ex.mistake || '',
-      generated_at: serverTimestamp(),
-      hit_count: 0,
-      last_accessed: serverTimestamp(),
-      source: 'gemini_ultra'
-    });
-  });
-
-  await Promise.all(batch);
-  console.log(`Successfully uploaded ${exercises.length} exercises to cache`);
+  console.warn("batchUploadExercises: This needs to be updated to use Convex mutations");
+  // This would need to be updated to use batch mutations
 };

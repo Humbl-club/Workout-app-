@@ -1,68 +1,62 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useMutation } from "convex/react";
+import { useUser } from '@clerk/clerk-react';
+import { useEffect } from 'react';
+import { api } from "../convex/_generated/api";
 import { UserProfile } from '../types';
-import { db } from '../firebase';
-import { doc, onSnapshot, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 
-export default function useUserProfile(userId: string | null) {
-    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-    const [profileLoaded, setProfileLoaded] = useState(false);
+export default function useUserProfile() {
+    const { user } = useUser();
+    const userId = user?.id || null;
+    
+    const userProfile = useQuery(
+        api.queries.getUserProfile,
+        userId ? { userId } : "skip"
+    );
+    const updateProfileMutation = useMutation(api.mutations.updateUserProfile);
+    const ensureUserExistsMutation = useMutation(api.mutations.ensureUserExists);
 
+    // Automatically create user in Convex if they don't exist
     useEffect(() => {
-        if (!userId) {
-            setUserProfile(null);
-            setProfileLoaded(true);
-            return;
+        if (userId && userProfile === null) {
+            // User is signed in but doesn't exist in Convex yet - create them
+            ensureUserExistsMutation({ userId }).catch((error) => {
+                console.error("Failed to ensure user exists in Convex", error);
+            });
         }
+    }, [userId, userProfile, ensureUserExistsMutation]);
 
-        setProfileLoaded(false);
-        const userDocRef = doc(db, 'users', userId);
-
-        const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                const lastProgression = data.lastProgressionApplied;
-
-                let lastProgressionISO: string | null = null;
-                if (lastProgression && typeof lastProgression.toDate === 'function') {
-                    lastProgressionISO = (lastProgression as Timestamp).toDate().toISOString();
-                } else if (lastProgression) {
-                    lastProgressionISO = new Date(lastProgression).toISOString();
-                }
-                
-                setUserProfile({
-                    ...data,
-                    lastProgressionApplied: lastProgressionISO,
-                } as UserProfile);
-            } else {
-                setUserProfile({}); // User profile doesn't exist yet, but it's not an error
-            }
-            setProfileLoaded(true);
-        }, (error) => {
-            console.error("Failed to load user profile from Firestore", error);
-            setProfileLoaded(true);
-        });
-
-        return () => unsubscribe();
-    }, [userId]);
-
-    const updateUserProfile = useCallback(async (profileData: Partial<UserProfile>) => {
-        if (!userId) {
-            console.error("Cannot update profile. User not logged in.");
-            return;
-        }
+    const updateUserProfile = async (profileData: Partial<UserProfile> & { activePlanId?: string | null }) => {
+        if (!userId) return;
         
         try {
-            const userDocRef = doc(db, 'users', userId);
-            // If we're updating the progression date, use the server's timestamp
-            const dataToSet = { ...profileData };
-            if ('lastProgressionApplied' in dataToSet) {
-                dataToSet.lastProgressionApplied = serverTimestamp();
-            }
-            await setDoc(userDocRef, dataToSet, { merge: true });
+            await updateProfileMutation({
+                userId,
+                activePlanId: profileData.activePlanId !== undefined ? (profileData.activePlanId as any) : undefined,
+                lastProgressionApplied: profileData.lastProgressionApplied || undefined,
+                bodyMetrics: profileData.bodyMetrics || undefined,
+                goals: profileData.goals || undefined,
+                trainingPreferences: profileData.trainingPreferences || undefined,
+            });
         } catch (e) {
-            console.error("Failed to update user profile in Firestore", e);
+            console.error("Failed to update user profile in Convex", e);
         }
-    }, [userId]);
+    };
 
-    return { userProfile, updateUserProfile, profileLoaded };
+    // Convert Convex user to UserProfile format
+    const profile: UserProfile | null = userProfile ? {
+        userCode: userProfile.userCode || undefined,
+        lastProgressionApplied: userProfile.lastProgressionApplied || undefined,
+        bodyMetrics: userProfile.bodyMetrics || undefined,
+        goals: userProfile.goals || undefined,
+        trainingPreferences: userProfile.trainingPreferences || undefined,
+        apiUsage: userProfile.apiUsage || undefined,
+    } : null;
+
+    const profileLoaded = userProfile !== undefined || !userId;
+
+    return { 
+        userProfile: profile, 
+        updateUserProfile, 
+        profileLoaded 
+    };
 }

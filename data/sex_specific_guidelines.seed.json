@@ -1,0 +1,193 @@
+[
+  {
+    "sex": "female",
+    "goal": "Hypertrophy",
+    "experience": "Intermediate",
+    "guidelines": [
+      "Prioritize hip/knee stability and single-leg strength twice weekly",
+      "Load main lifts 3-4x6-10 reps; monitor shoulder tolerance on pressing",
+      "Include pelvic-floor-safe core (dead bug, side plank) 2-3x/week",
+      "Adjust very high-impact plyos only if athletic level is low"
+    ],
+    "recommended_exercises": ["trap bar deadlift", "rear-foot elevated split squat", "landmine press", "side plank"],
+    "contraindications": ["upright row for shoulder impingement"],
+    "evidence_level": "moderate",
+    "source": "Elliott-Sale 2021, McNulty 2020",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sex": "female",
+    "goal": "Hypertrophy",
+    "experience": "Beginner",
+    "guidelines": [
+      "Start with bodyweight and light weights; focus on form mastery",
+      "Progress to 3x8-12 reps over 4-6 weeks; prioritize stability",
+      "Include full-body movements 2-3x/week; avoid excessive volume",
+      "Emphasize hip hinge and squat patterns for lower body development"
+    ],
+    "recommended_exercises": ["goblet squat", "hip thrust", "dumbbell row", "plank"],
+    "contraindications": ["heavy overhead pressing initially"],
+    "evidence_level": "moderate",
+    "source": "NSCA Essentials 4e",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sex": "female",
+    "goal": "Hypertrophy",
+    "experience": "Advanced",
+    "guidelines": [
+      "Use periodized volume (3-4x8-12, 4-5x6-8); deload every 4-6 weeks",
+      "Include advanced techniques (drop sets, rest-pause) sparingly",
+      "Maintain hip/knee stability work; prioritize recovery",
+      "Monitor hormonal cycle impact on performance; adjust volume accordingly"
+    ],
+    "recommended_exercises": ["barbell back squat", "Romanian deadlift", "overhead press", "chin-up"],
+    "contraindications": [],
+    "evidence_level": "moderate",
+    "source": "Schoenfeld 2016, Contreras 2019",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sex": "female",
+    "goal": "Strength & Power",
+    "experience": "Intermediate",
+    "guidelines": [
+      "Use 3-5x3-6 rep ranges for main lifts; 2-4 min rest between sets",
+      "Include explosive movements (jumps, throws) 1-2x/week",
+      "Balance lower-body emphasis with upper-body pressing/pulling",
+      "Prioritize recovery; limit high-intensity sessions to 3-4x/week"
+    ],
+    "recommended_exercises": ["back squat", "deadlift", "bench press", "power clean"],
+    "contraindications": [],
+    "evidence_level": "moderate",
+    "source": "NSCA Essentials 4e",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sex": "female",
+    "goal": "Weight Loss",
+    "experience": "Beginner",
+    "guidelines": [
+      "Combine resistance training 2-3x/week with moderate cardio",
+      "Use full-body circuits; 2-3x12-15 reps; minimal rest (30-60s)",
+      "Include daily movement (walking, light activity)",
+      "Focus on sustainable habits; avoid extreme calorie restriction"
+    ],
+    "recommended_exercises": ["bodyweight squat", "push-up", "walking lunge", "plank"],
+    "contraindications": ["excessive high-impact initially"],
+    "evidence_level": "high",
+    "source": "ACSM Guidelines 2021",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sex": "female",
+    "goal": "Mobility",
+    "experience": "Beginner",
+    "guidelines": [
+      "Daily mobility work (10-15 min); focus on hip, thoracic spine, shoulders",
+      "Combine static stretching with dynamic movements",
+      "Include yoga-based flows 2-3x/week",
+      "Progress gradually; avoid forcing ranges of motion"
+    ],
+    "recommended_exercises": ["hip flexor stretch", "cat-cow", "shoulder dislocates", "pigeon pose"],
+    "contraindications": [],
+    "evidence_level": "moderate",
+    "source": "Chek 2004, Starrett 2013",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sex": "male",
+    "goal": "Strength & Power",
+    "experience": "Advanced",
+    "guidelines": [
+      "Use lower-rep, higher-load primaries (3-5x3-6) with adequate rest (2-4 min)",
+      "Balance push/pull and hinge/squat weekly; avoid overhead-only bias",
+      "Include hip stability and anti-rotation core twice weekly"
+    ],
+    "recommended_exercises": ["back squat", "bench press", "weighted pull-up", "Pallof press"],
+    "contraindications": [],
+    "evidence_level": "moderate",
+    "source": "NSCA Essentials 4e",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sex": "male",
+    "goal": "Strength & Power",
+    "experience": "Beginner",
+    "guidelines": [
+      "Focus on form mastery; use 3-4x5-8 reps; linear progression",
+      "Emphasize compound movements (squat, deadlift, press, row)",
+      "Train 3x/week full-body; allow 48h between sessions",
+      "Avoid max effort lifts; keep 2-3 reps in reserve"
+    ],
+    "recommended_exercises": ["goblet squat", "trap bar deadlift", "push-up", "inverted row"],
+    "contraindications": [],
+    "evidence_level": "high",
+    "source": "Starting Strength, Practical Programming",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sex": "male",
+    "goal": "Hypertrophy",
+    "experience": "Intermediate",
+    "guidelines": [
+      "Use 3-4x8-12 reps for main lifts; 4-5x10-15 for accessories",
+      "Train each muscle group 2x/week; split upper/lower or push/pull/legs",
+      "Include progressive overload; increase weight or reps weekly",
+      "Prioritize recovery; 7-9h sleep, adequate protein"
+    ],
+    "recommended_exercises": ["barbell bench press", "barbell row", "leg press", "lateral raise"],
+    "contraindications": [],
+    "evidence_level": "high",
+    "source": "Schoenfeld 2016",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sex": "male",
+    "goal": "Athletic Performance",
+    "experience": "Intermediate",
+    "guidelines": [
+      "Combine strength (3-5x3-6) with power (3-5x3-5 explosive) and conditioning",
+      "Train movement patterns (squat, hinge, push, pull, carry) 2x/week each",
+      "Include sport-specific drills; maintain flexibility",
+      "Periodize: strength base → power → peaking"
+    ],
+    "recommended_exercises": ["back squat", "power clean", "sled push", "med ball throw"],
+    "contraindications": [],
+    "evidence_level": "moderate",
+    "source": "NSCA Essentials 4e",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sex": "male",
+    "goal": "Weight Loss",
+    "experience": "Beginner",
+    "guidelines": [
+      "Combine resistance training 3x/week with 150+ min/week moderate cardio",
+      "Use full-body circuits; 2-3x12-15 reps; 30-60s rest",
+      "Include daily activity; prioritize consistency over intensity",
+      "Create sustainable caloric deficit (500-750 kcal/day)"
+    ],
+    "recommended_exercises": ["squat", "push-up", "row", "farmer's walk"],
+    "contraindications": [],
+    "evidence_level": "high",
+    "source": "ACSM Guidelines 2021",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sex": "neutral",
+    "goal": "Mobility",
+    "experience": "Beginner",
+    "guidelines": [
+      "Daily mobility work (10-15 min); focus on major joints",
+      "Combine static and dynamic stretching",
+      "Include movement flows 2-3x/week",
+      "Progress gradually; respect current limitations"
+    ],
+    "recommended_exercises": ["hip circles", "shoulder dislocates", "cat-cow", "leg swings"],
+    "contraindications": [],
+    "evidence_level": "moderate",
+    "source": "Starrett 2013",
+    "last_reviewed": "2025-01-01"
+  }
+]

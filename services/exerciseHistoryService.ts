@@ -1,46 +1,73 @@
-import { db } from '../firebase';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { useMutation, useQuery } from "convex/react";
+import { useUser } from '@clerk/clerk-react';
+import { api } from "../convex/_generated/api";
 
 /**
- * Save exercise history for auto-fill next time
+ * Hook to save exercise history for auto-fill next time
+ * Use within React components only
+ */
+export const useSaveExerciseHistory = () => {
+  const { user } = useUser();
+  const userId = user?.id || null;
+  const saveHistory = useMutation(api.mutations.saveExerciseHistory);
+
+  return async (
+    exerciseName: string,
+    weight: number,
+    reps: number
+  ) => {
+    if (!userId) return;
+    
+    try {
+      await saveHistory({ userId, exerciseName, weight, reps });
+    } catch (error) {
+      console.error("Failed to save exercise history:", error);
+    }
+  };
+};
+
+/**
+ * Hook to get exercise history for auto-fill
+ * Use within React components: const history = useExerciseHistoryFor(exerciseName);
+ */
+export const useExerciseHistoryFor = (exerciseName: string) => {
+  const { user } = useUser();
+  const userId = user?.id || null;
+  
+  const history = useQuery(
+    api.queries.getExerciseHistory,
+    (userId && exerciseName) ? { userId, exerciseName } : "skip"
+  );
+
+  if (!history) return null;
+
+  return {
+    weight: history.last_weight,
+    reps: history.last_reps
+  };
+};
+
+/**
+ * Legacy async function wrapper - for backwards compatibility
+ * Note: This creates a hook internally, so use useExerciseHistoryFor in components instead
  */
 export const saveExerciseHistory = async (
-  userId: string | undefined,
   exerciseName: string,
   weight: number,
   reps: number
 ) => {
-  if (!userId) return;
-
-  const normalized = exerciseName.toLowerCase().replace(/\s+/g, '_');
-  await setDoc(doc(db, `users/${userId}/exercise_history`, normalized), {
-    exercise_name: exerciseName,
-    last_weight: weight,
-    last_reps: reps,
-    last_logged: serverTimestamp()
-  });
+  // This needs to be called from a component with useSaveExerciseHistory
+  console.warn("saveExerciseHistory: Use useSaveExerciseHistory hook instead");
 };
 
 /**
- * Get exercise history for auto-fill
+ * Legacy async function wrapper - for backwards compatibility  
+ * Note: Use useExerciseHistoryFor hook in components instead
  */
 export const getExerciseHistory = async (
-  userId: string | undefined,
   exerciseName: string
 ): Promise<{ weight: number; reps: number } | null> => {
-  if (!userId) return null;
-
-  const normalized = exerciseName.toLowerCase().replace(/\s+/g, '_');
-  const docRef = doc(db, `users/${userId}/exercise_history`, normalized);
-  const snap = await getDoc(docRef);
-
-  if (snap.exists()) {
-    const data = snap.data();
-    return {
-      weight: data.last_weight,
-      reps: data.last_reps
-    };
-  }
-
+  // This needs to be called from a component with useExerciseHistoryFor
+  console.warn("getExerciseHistory: Use useExerciseHistoryFor hook instead");
   return null;
 };

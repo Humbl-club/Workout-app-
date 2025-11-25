@@ -1,0 +1,232 @@
+{
+  "protocols": [
+    {
+      "issue": "knee_pain",
+      "book_source": "Becoming a Supple Leopard by Kelly Starrett",
+      "exercises_to_avoid": [
+        {
+          "exercise": "deep_squats",
+          "reason": "Excessive knee flexion can aggravate knee pain"
+        },
+        {
+          "exercise": "lunges",
+          "reason": "Forward knee stress in lunge position"
+        },
+        {
+          "exercise": "leg_extensions",
+          "reason": "Shear forces on knee joint"
+        }
+      ],
+      "exercise_substitutions": [
+        {
+          "avoid": "barbell_back_squat",
+          "use_instead": "box_squat",
+          "rationale": "Box limits range of motion to pain-free range"
+        },
+        {
+          "avoid": "walking_lunges",
+          "use_instead": "step_ups",
+          "rationale": "Step-ups control range of motion and reduce knee stress"
+        },
+        {
+          "avoid": "deep_squats",
+          "use_instead": "quarter_squats",
+          "rationale": "Reduced knee flexion while maintaining movement pattern"
+        }
+      ],
+      "prehab_exercises": [
+        {
+          "exercise_name": "clamshells",
+          "frequency": "Daily",
+          "sets_reps": "2x15 each side",
+          "rationale": "Strengthen glute medius for better knee tracking"
+        },
+        {
+          "exercise_name": "straight_leg_raises",
+          "frequency": "Daily", 
+          "sets_reps": "2x15 each leg",
+          "rationale": "Strengthen quadriceps without knee joint movement"
+        }
+      ],
+      "warning_signs": [
+        "Sharp pain during movement",
+        "Swelling after exercise",
+        "Pain that worsens with activity",
+        "Inability to bear weight"
+      ],
+      "when_to_progress": "Pain-free for 2+ weeks with current exercises",
+      "when_to_regress": "Any increase in pain during or after exercise"
+    },
+    {
+      "issue": "lower_back_pain",
+      "book_source": "Back Mechanic by Stuart McGill",
+      "exercises_to_avoid": [
+        {
+          "exercise": "conventional_deadlift",
+          "reason": "High shear forces on lumbar spine"
+        },
+        {
+          "exercise": "sit_ups",
+          "reason": "Repeated spinal flexion under load"
+        },
+        {
+          "exercise": "toe_touches",
+          "reason": "Loaded spinal flexion"
+        }
+      ],
+      "exercise_substitutions": [
+        {
+          "avoid": "conventional_deadlift",
+          "use_instead": "trap_bar_deadlift",
+          "rationale": "More upright torso reduces spinal shear forces"
+        },
+        {
+          "avoid": "barbell_back_squat",
+          "use_instead": "goblet_squat",
+          "rationale": "Front loading promotes more upright posture"
+        },
+        {
+          "avoid": "bent_over_row",
+          "use_instead": "chest_supported_row",
+          "rationale": "Removes need to maintain bent-over position"
+        }
+      ],
+      "prehab_exercises": [
+        {
+          "exercise_name": "mcgill_big_3",
+          "frequency": "Daily",
+          "sets_reps": "3x8-10 second holds",
+          "rationale": "Build spinal endurance without spinal movement"
+        },
+        {
+          "exercise_name": "bird_dog",
+          "frequency": "Daily",
+          "sets_reps": "2x10 each side",
+          "rationale": "Improve core stability and coordination"
+        }
+      ],
+      "warning_signs": [
+        "Radiating pain into legs",
+        "Numbness or tingling",
+        "Loss of bowel/bladder control",
+        "Severe morning stiffness"
+      ],
+      "when_to_progress": "No pain for 4+ weeks and good movement quality",
+      "when_to_regress": "Any return of pain or stiffness"
+    },
+    {
+      "issue": "shoulder_impingement",
+      "book_source": "Shoulder Pain? by Jeremy Lewis",
+      "exercises_to_avoid": [
+        {
+          "exercise": "overhead_press",
+          "reason": "Overhead position can compress structures in shoulder"
+        },
+        {
+          "exercise": "upright_rows",
+          "reason": "Internal rotation with elevation increases impingement risk"
+        },
+        {
+          "exercise": "behind_neck_press",
+          "reason": "Extreme shoulder external rotation and abduction"
+        }
+      ],
+      "exercise_substitutions": [
+        {
+          "avoid": "overhead_press",
+          "use_instead": "landmine_press",
+          "rationale": "Diagonal pressing plane is more shoulder-friendly"
+        },
+        {
+          "avoid": "pull_ups",
+          "use_instead": "neutral_grip_pull_ups",
+          "rationale": "Neutral grip reduces shoulder internal rotation"
+        },
+        {
+          "avoid": "bench_press",
+          "use_instead": "incline_dumbbell_press",
+          "rationale": "Incline reduces shoulder horizontal abduction"
+        }
+      ],
+      "prehab_exercises": [
+        {
+          "exercise_name": "band_pull_aparts",
+          "frequency": "Daily",
+          "sets_reps": "3x15-20",
+          "rationale": "Strengthen posterior deltoid and improve posture"
+        },
+        {
+          "exercise_name": "external_rotations",
+          "frequency": "Daily",
+          "sets_reps": "2x15 each arm",
+          "rationale": "Strengthen rotator cuff muscles"
+        }
+      ],
+      "warning_signs": [
+        "Pain with overhead reaching",
+        "Night pain that disturbs sleep",
+        "Weakness in arm elevation",
+        "Catching or clicking sensations"
+      ],
+      "when_to_progress": "Full pain-free range of motion for 3+ weeks",
+      "when_to_regress": "Any return of pain with movement"
+    },
+    {
+      "issue": "wrist_pain",
+      "book_source": "Grip Strength Training by Ashley Jones",
+      "exercises_to_avoid": [
+        {
+          "exercise": "push_ups_on_hands",
+          "reason": "Extended wrist position under load"
+        },
+        {
+          "exercise": "front_squats",
+          "reason": "Wrist hyperextension in front rack position"
+        },
+        {
+          "exercise": "handstand_push_ups",
+          "reason": "High load on extended wrists"
+        }
+      ],
+      "exercise_substitutions": [
+        {
+          "avoid": "push_ups",
+          "use_instead": "push_ups_on_fists",
+          "rationale": "Neutral wrist position reduces stress"
+        },
+        {
+          "avoid": "front_squats",
+          "use_instead": "cross_arm_front_squats",
+          "rationale": "Avoids wrist extension in rack position"
+        },
+        {
+          "avoid": "barbell_curls",
+          "use_instead": "dumbbell_curls",
+          "rationale": "Allows natural wrist position"
+        }
+      ],
+      "prehab_exercises": [
+        {
+          "exercise_name": "wrist_circles",
+          "frequency": "Daily",
+          "sets_reps": "2x10 each direction",
+          "rationale": "Improve wrist mobility and circulation"
+        },
+        {
+          "exercise_name": "prayer_stretch",
+          "frequency": "Daily",
+          "sets_reps": "3x30 seconds",
+          "rationale": "Stretch wrist flexors"
+        }
+      ],
+      "warning_signs": [
+        "Numbness or tingling in fingers",
+        "Pain that worsens at night",
+        "Weakness in grip strength",
+        "Pain that radiates up the arm"
+      ],
+      "when_to_progress": "No pain with daily activities for 2+ weeks",
+      "when_to_regress": "Any increase in pain or tingling"
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+[
+  {
+    "sport": "boxing",
+    "goal": "Athletic Performance",
+    "experience": "Intermediate",
+    "movement_priorities": [
+      "Rotational power 2-3x/week",
+      "Upper-body endurance (push/pull) 2-3x/week",
+      "Lower-body elasticity and footwork 2x/week"
+    ],
+    "top_exercises": ["med ball rotational throw", "trap bar jump shrug", "chin-up", "push-up cluster", "lateral bound", "farmer's carry"],
+    "conditioning_notes": ["Intervals: 3-5x3 min @ fight pace, 1 min rest", "Sled/bike for low-impact conditioning on off days"],
+    "contraindications": ["Excessive eccentric soreness close to sparring"],
+    "evidence_level": "moderate",
+    "source": "Practical Programming for Combat Sports",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sport": "hyrox",
+    "goal": "Athletic Performance",
+    "experience": "Intermediate",
+    "movement_priorities": [
+      "Sled push/pull strength 1-2x/week",
+      "Wall ball capacity and carries weekly",
+      "Running economy with mixed modalities"
+    ],
+    "top_exercises": ["sled push", "sled pull", "wall ball", "farmer's carry", "lunge variations", "rower intervals"],
+    "conditioning_notes": ["Threshold intervals 3-5x5 min @ 10K pace", "Mixed modal metcons 12-18 min"],
+    "contraindications": ["High-impact plyos if knee pain"],
+    "evidence_level": "moderate",
+    "source": "Hyrox protocols",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sport": "running",
+    "goal": "Athletic Performance",
+    "experience": "Intermediate",
+    "movement_priorities": [
+      "Single-leg strength 2x/week",
+      "Hip stability and glute strength 2x/week",
+      "Running economy drills 1-2x/week"
+    ],
+    "top_exercises": ["single-leg deadlift", "bulgarian split squat", "hip thrust", "calf raise", "running drills", "plyometric bounds"],
+    "conditioning_notes": ["Tempo runs 2x/week", "Interval training 1x/week", "Long runs 1x/week"],
+    "contraindications": ["Excessive volume if injury-prone"],
+    "evidence_level": "high",
+    "source": "Daniels Running Formula, Magill 2011",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sport": "cycling",
+    "goal": "Athletic Performance",
+    "experience": "Intermediate",
+    "movement_priorities": [
+      "Hip mobility and glute strength 2x/week",
+      "Core stability and anti-rotation 2x/week",
+      "Upper body maintenance 1x/week"
+    ],
+    "top_exercises": ["hip thrust", "single-leg deadlift", "Pallof press", "row variations", "plank variations", "hip flexor stretch"],
+    "conditioning_notes": ["Zone 2 base building 3-4x/week", "Threshold intervals 1-2x/week", "VO2 max intervals 1x/week"],
+    "contraindications": ["Excessive heavy lifting during peak training"],
+    "evidence_level": "moderate",
+    "source": "Training and Racing with a Power Meter",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sport": "soccer",
+    "goal": "Athletic Performance",
+    "experience": "Intermediate",
+    "movement_priorities": [
+      "Single-leg strength and stability 2x/week",
+      "Agility and change of direction 2x/week",
+      "Sprint power and acceleration 1-2x/week"
+    ],
+    "top_exercises": ["lateral bound", "single-leg squat", "agility ladder", "sprint intervals", "hip thrust", "Nordic curl"],
+    "conditioning_notes": ["Small-sided games 2-3x/week", "Interval sprints 1x/week", "Aerobic base 1-2x/week"],
+    "contraindications": ["Excessive volume during season"],
+    "evidence_level": "high",
+    "source": "Science and Soccer",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sport": "basketball",
+    "goal": "Athletic Performance",
+    "experience": "Intermediate",
+    "movement_priorities": [
+      "Vertical jump and landing mechanics 2x/week",
+      "Lateral movement and agility 2x/week",
+      "Single-leg strength 2x/week"
+    ],
+    "top_exercises": ["depth jump", "lateral bound", "single-leg squat", "hip thrust", "med ball throw", "agility drills"],
+    "conditioning_notes": ["Court sprints 2x/week", "Shooting practice with conditioning", "Recovery sessions 1-2x/week"],
+    "contraindications": ["Excessive jumping if knee pain"],
+    "evidence_level": "moderate",
+    "source": "Basketball Performance Training",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sport": "rock_climbing",
+    "goal": "Athletic Performance",
+    "experience": "Intermediate",
+    "movement_priorities": [
+      "Finger and grip strength 2-3x/week",
+      "Pull strength and lock-off capacity 2x/week",
+      "Antagonist training (push) 2x/week"
+    ],
+    "top_exercises": ["hangboard", "weighted pull-up", "lock-off holds", "push-up", "shoulder external rotation", "core tension"],
+    "conditioning_notes": ["Climbing sessions 3-4x/week", "Finger strength 2x/week", "Antagonist work on rest days"],
+    "contraindications": ["Excessive finger training if pain"],
+    "evidence_level": "moderate",
+    "source": "Training for Climbing",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "sport": "strength_only",
+    "goal": "Strength & Power",
+    "experience": "Intermediate",
+    "movement_priorities": [
+      "Squat pattern 2x/week",
+      "Hinge pattern 2x/week",
+      "Press and pull balance 2x/week"
+    ],
+    "top_exercises": ["back squat", "deadlift", "bench press", "overhead press", "barbell row", "weighted pull-up"],
+    "conditioning_notes": ["Strength focus: 3-5x3-6 reps", "Accessory work: 3-4x8-12 reps", "Deload every 4-6 weeks"],
+    "contraindications": [],
+    "evidence_level": "high",
+    "source": "Starting Strength, Practical Programming",
+    "last_reviewed": "2025-01-01"
+  }
+]

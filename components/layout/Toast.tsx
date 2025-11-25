@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { CheckCircleIcon, XCircleIcon, SparklesIcon } from '../icons';
+import { cn } from '../../lib/utils';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -15,6 +17,18 @@ export function notify(detail: ToastEventDetail) {
 }
 
 interface ToastItem extends ToastEventDetail { id: number }
+
+const ToastIcon = ({ type }: { type: ToastType }) => {
+  const iconClass = "w-5 h-5 flex-shrink-0";
+  switch (type) {
+    case 'success':
+      return <CheckCircleIcon className={iconClass} />;
+    case 'error':
+      return <XCircleIcon className={iconClass} />;
+    case 'info':
+      return <SparklesIcon className={iconClass} />;
+  }
+};
 
 export default function ToastContainer() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -34,23 +48,68 @@ export default function ToastContainer() {
     return () => window.removeEventListener(TOAST_EVENT, handler as EventListener);
   }, []);
 
-  const color = (t: ToastType) => {
-    switch (t) {
-      case 'success': return 'bg-green-600/90 border-green-400/40';
-      case 'error': return 'bg-red-600/90 border-red-400/40';
-      default: return 'bg-stone-700/90 border-stone-500/40';
+  const getToastStyles = (type: ToastType) => {
+    switch (type) {
+      case 'success':
+        return 'bg-[var(--success)]/95 border-[var(--success)]/40 text-white';
+      case 'error':
+        return 'bg-[var(--error)]/95 border-[var(--error)]/40 text-white';
+      case 'info':
+        return 'bg-[var(--surface)]/95 border-[var(--border-card)] text-[var(--text-primary)] backdrop-blur-xl';
     }
   };
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-2rem)] max-w-md space-y-2">
-      {toasts.map(t => (
+    <div className="fixed top-4 right-4 z-[100] w-full max-w-sm px-4 space-y-2 pointer-events-none">
+      {toasts.map((toast, index) => (
         <div
-          key={t.id}
-          className={`px-4 py-3 text-sm font-semibold text-white border rounded-xl shadow-lg ${color(t.type)} animate-fade-in`}
+          key={toast.id}
+          className={cn(
+            "pointer-events-auto",
+            "px-4 py-3 rounded-xl shadow-elevated border",
+            "animate-slide-in-right",
+            getToastStyles(toast.type)
+          )}
+          style={{
+            animationDelay: `${index * 50}ms`
+          }}
           role="status"
         >
-          {t.message}
+          <div className="flex items-center gap-3">
+            <ToastIcon type={toast.type} />
+            <p className="text-[14px] font-semibold flex-1 leading-snug">
+              {toast.message}
+            </p>
+            {/* Auto-dismiss progress indicator */}
+            <div className="flex-shrink-0 relative w-5 h-5">
+              <svg className="absolute inset-0 -rotate-90">
+                <circle
+                  cx="10"
+                  cy="10"
+                  r="8"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  fill="none"
+                  className="opacity-20"
+                />
+                <circle
+                  cx="10"
+                  cy="10"
+                  r="8"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  fill="none"
+                  strokeDasharray={`${2 * Math.PI * 8}`}
+                  strokeDashoffset="0"
+                  className="transition-all duration-[3500ms] linear"
+                  style={{
+                    strokeDashoffset: `${2 * Math.PI * 8}`,
+                    transitionProperty: 'stroke-dashoffset'
+                  }}
+                />
+              </svg>
+            </div>
+          </div>
         </div>
       ))}
     </div>

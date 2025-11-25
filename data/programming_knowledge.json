@@ -1,0 +1,133 @@
+{
+  "knowledge": [
+    {
+      "book_title": "Starting Strength",
+      "author": "Mark Rippetoe",
+      "category": "strength",
+      "principle_type": "exercise_selection",
+      "title": "The Big Three Compound Priority",
+      "description": "Prioritize the squat, bench press, and deadlift as the foundation of any strength program. These three exercises work the most muscle mass with the heaviest weights, providing the greatest stimulus for strength development. All other exercises should supplement these primary movements, not replace them.",
+      "applicable_goals": ["strength", "hypertrophy", "athletic"],
+      "applicable_experience": ["beginner", "intermediate", "advanced"],
+      "exercise_recommendations": [
+        {
+          "exercise_name": "barbell_back_squat",
+          "when_to_use": "Primary lower body strength movement for all trainees",
+          "alternatives": ["front_squat", "goblet_squat"],
+          "modifications": {
+            "knee_pain": "Use box squats or reduce range of motion",
+            "back_pain": "Use front squats or safety squat bar",
+            "beginner": "Start with bodyweight squats to learn movement pattern"
+          },
+          "programming": {
+            "sets": "3-5",
+            "reps": "5 for strength, 8-12 for hypertrophy",
+            "rest": "3-5 minutes",
+            "frequency": "2-3x per week",
+            "progression": "Add 5lbs each session for beginners"
+          }
+        }
+      ],
+      "guidelines": [
+        {
+          "rule": "Always perform compound movements before isolation exercises",
+          "rationale": "Compound movements require the most energy and coordination when fresh",
+          "applies_to": ["all"]
+        }
+      ]
+    },
+    {
+      "book_title": "Becoming a Supple Leopard",
+      "author": "Kelly Starrett",
+      "category": "mobility",
+      "principle_type": "injury_protocol",
+      "title": "Movement Quality Before Intensity",
+      "description": "Perfect movement patterns must be established before adding load or speed. Poor movement quality under load creates compensation patterns that lead to injury and inefficient movement. Focus on mobility and stability work to address movement restrictions before progressing to loaded movements.",
+      "applicable_goals": ["mobility", "athletic", "injury_prevention"],
+      "applicable_experience": ["all"],
+      "exercise_recommendations": [
+        {
+          "exercise_name": "worlds_greatest_stretch",
+          "when_to_use": "Daily mobility work and warm-up preparation",
+          "alternatives": ["hip_flexor_stretch", "thoracic_spine_rotation"],
+          "programming": {
+            "sets": "2-3",
+            "duration": "30-60 seconds each position",
+            "frequency": "Daily"
+          }
+        }
+      ],
+      "guidelines": [
+        {
+          "rule": "Address mobility restrictions before adding load",
+          "rationale": "Loading dysfunctional movement patterns creates injury risk",
+          "applies_to": ["all"]
+        }
+      ]
+    },
+    {
+      "book_title": "Thinner Leaner Stronger",
+      "author": "Michael Matthews",
+      "category": "aesthetics",
+      "principle_type": "goal_specific",
+      "title": "Progressive Overload for Body Composition",
+      "description": "For aesthetic goals, focus on progressive overload in the 8-12 rep range to maximize muscle hypertrophy while managing fatigue. Compound movements should form the base, with isolation work targeting specific areas that need development. Volume should be distributed across the week to allow for recovery.",
+      "applicable_goals": ["aesthetics", "hypertrophy"],
+      "applicable_experience": ["beginner", "intermediate"],
+      "exercise_recommendations": [
+        {
+          "exercise_name": "hip_thrust",
+          "when_to_use": "For glute development and aesthetic lower body goals",
+          "alternatives": ["glute_bridge", "bulgarian_split_squat"],
+          "programming": {
+            "sets": "3-4",
+            "reps": "12-15",
+            "rest": "60-90 seconds",
+            "frequency": "2x per week"
+          }
+        }
+      ]
+    },
+    {
+      "book_title": "Athletic Body in Balance",
+      "author": "Gray Cook",
+      "category": "athletic",
+      "principle_type": "personalization",
+      "title": "Address Individual Movement Limitations",
+      "description": "Every athlete has unique movement limitations that must be identified and addressed before progressing to sport-specific training. Use movement screens to identify dysfunctions, then apply corrective exercises to restore proper movement patterns. Training should progress from stability to mobility to strength.",
+      "applicable_goals": ["athletic", "injury_prevention"],
+      "applicable_experience": ["intermediate", "advanced"],
+      "guidelines": [
+        {
+          "rule": "Screen movement patterns before designing programs",
+          "rationale": "Individual limitations determine exercise selection and progression",
+          "applies_to": ["athletic", "intermediate", "advanced"]
+        }
+      ]
+    },
+    {
+      "book_title": "The New Encyclopedia of Modern Bodybuilding",
+      "author": "Arnold Schwarzenegger", 
+      "category": "bodybuilding",
+      "principle_type": "programming",
+      "title": "Volume Progression for Hypertrophy",
+      "description": "Muscle growth requires progressive increases in training volume over time. Start with moderate volume and add sets, exercises, or training days as adaptation occurs. Different muscle groups respond to different volume thresholds, with larger muscles generally requiring more volume than smaller ones.",
+      "applicable_goals": ["hypertrophy", "bodybuilding", "aesthetics"],
+      "applicable_experience": ["intermediate", "advanced"],
+      "programming_templates": {
+        "beginner": {
+          "frequency": "3x per week",
+          "split": "Full body",
+          "sets_per_muscle": "10-12 per week",
+          "progression": "Add reps, then weight"
+        },
+        "intermediate": {
+          "frequency": "4-5x per week", 
+          "split": "Upper/Lower or Push/Pull/Legs",
+          "sets_per_muscle": "12-16 per week",
+          "progression": "Periodized volume increases"
+        }
+      }
+    }
+  ]
+}

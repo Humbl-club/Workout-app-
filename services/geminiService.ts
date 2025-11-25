@@ -1,5 +1,10 @@
 import { GoogleGenAI, Type, Chat, Part, FunctionDeclaration } from "@google/genai";
 import { WorkoutPlan, PlanDay, PlanExercise, DailyRoutine, WorkoutLog, WorkoutBlock } from '../types';
+import { resolveAbbreviations, identifyColloquialTerms, detectWorkoutFormat, WORKOUT_PATTERNS } from './workoutAbbreviations';
+import { api } from '../convex/_generated/api';
+import { convex } from '../convexClient';
+import { fetchGuidelineConstraints } from './knowledgeService';
+import i18n from '../i18n/config';
 
 // Resolve API key at runtime if available (e.g., from localStorage) or fall back to build-time env.
 const getApiKey = (): string | undefined => {
@@ -26,6 +31,22 @@ const getApiKey = (): string | undefined => {
 };
 
 const systemPromptParse = `You are an ELITE workout plan parser for the REBLD fitness app. Your mission: Transform ANY workout plan—from simple one-liners like "chest today" to complex density training programs with supersets, giant sets, and AMRAPs—into perfectly structured JSON.
+
+🔤 ABBREVIATION AWARENESS:
+Common abbreviations have been expanded in the input, but you may still encounter:
+- Movement: T2B (Toes to Bar), HSPU (Handstand Push-ups), MU (Muscle Ups), DU (Double Unders)
+- Equipment: KB (Kettlebell), DB (Dumbbell), BB (Barbell), BW (Bodyweight)
+- Formats: EMOM (Every Minute on the Minute), AMRAP (As Many Rounds As Possible), RFT (Rounds For Time)
+- Intensity: RPE (Rate of Perceived Exertion), 1RM (1 Rep Max), % (percentage)
+
+🎯 ADVANCED FORMAT DETECTION:
+- EMOM/E2MOM/E3MOM: Create timed interval blocks with rest built-in
+- Ladder (10-9-8...1): Parse as descending rep scheme in reps_per_set array
+- Pyramid (1-2-3-4-5-4-3-2-1): Parse as ascending then descending
+- Cluster (3.3.3 @ 85%): Parse as cluster sets with intra-set rest
+- Death by: Parse as ascending ladder with time pressure
+- Chipper: Long circuit of varied exercises
+- Buy-in/Cash-out: Separate warmup and finisher blocks
 
 🚨 CRITICAL RULE #1: IF YOU SEE EXERCISES IN THE INPUT, YOU MUST CREATE WORKOUT BLOCKS!
 Do NOT return empty blocks unless the day is EXPLICITLY marked as "Rest" or has NO exercises listed.
@@ -381,31 +402,302 @@ const fileToGenerativePart = async (file: File): Promise<Part> => {
     };
 };
 
+/**
+ * TIER 1: Gemini Pro for complex plan generation
+ * This is worth the cost for high-quality, comprehensive plans
+ */
 export const generateNewWorkoutPlan = async (
     goal: string, 
     experience: string, 
     frequency: string, 
     painPoints: string[], 
     sport: string, 
-    notes: string
+    notes: string,
+    useOptimizedKnowledge: boolean = true,
+    profileExtras?: {
+      sex?: 'male' | 'female' | 'other';
+      equipment?: 'minimal' | 'home_gym' | 'commercial_gym';
+      preferred_session_length?: '30' | '45' | '60' | '75';
+      athletic_level?: 'low' | 'moderate' | 'high';
+      training_age_years?: number | null;
+      body_type?: 'lean' | 'average' | 'muscular';
+      weight?: number;
+      height?: number;
+      comfort_flags?: string[];
+    }
 ): Promise<WorkoutPlan> => {
+    console.log('Starting plan generation with:', { goal, experience, frequency, painPoints, sport, notes, useOptimizedKnowledge, profileExtras });
+
+    // Body context band heuristic
+    let band: string | undefined;
+    if (profileExtras?.weight && profileExtras?.height) {
+        const bmi = profileExtras.weight / ((profileExtras.height / 100) ** 2);
+        if (bmi > 35) band = 'bmi_gt_35';
+        else if (bmi > 32) band = 'bmi_gt_32';
+        else if (bmi > 27) band = 'bmi_27_32';
+        else band = 'bmi_lt_27';
+    }
+
+    const constraints = await fetchGuidelineConstraints({
+        sex: profileExtras?.sex,
+        goal,
+        experience,
+        sport: sport || undefined,
+        bmiBand: band,
+        athleticLevel: profileExtras?.athletic_level,
+        bodyType: profileExtras?.body_type,
+        painPoints,
+        comfortFlags: profileExtras?.comfort_flags,
+    });
+    
+    // Fetch sport guidelines for validation
+    let sportGuidelines: any[] = [];
+    if (sport) {
+        try {
+            sportGuidelines = await convex.query(api.queries.getSportGuidelines, { sport, goal, experience });
+        } catch (error) {
+            console.warn('Failed to fetch sport guidelines for validation:', error);
+        }
+    }
+    
     const apiKey = getApiKey();
     if (!apiKey) {
-        throw new Error("API_KEY environment variable not set.");
+        console.error('API key not found. Checked:', {
+            processEnv: !!process.env.API_KEY,
+            geminiEnv: !!process.env.GEMINI_API_KEY,
+            viteEnv: !!(import.meta as any)?.env?.VITE_GEMINI_API_KEY,
+            localStorage: !!window.localStorage?.getItem('GEMINI_API_KEY')
+        });
+        throw new Error("API_KEY environment variable not set. Please add VITE_GEMINI_API_KEY to your .env.local file.");
     }
+    
+    console.log('API key found, initializing Gemini...');
     const ai = new GoogleGenAI({ apiKey });
 
-    // This system prompt can remain largely the same, but the AI will now use the new schema.
-    const systemPromptGenerate = `You are an elite, evidence-based personal trainer for the REBLD app. Your task is to create a world-class, deeply personalized 7-day workout plan. Your response MUST be a single JSON object, following the provided "Workout Block" schema precisely.
+    const validatePlan = (plan: WorkoutPlan, opts: { sport?: string; sportGuidelines?: any[]; desiredFrequency?: string; preferredSessionLength?: string }) => {
+        const errors: string[] = [];
+        if (!plan?.weeklyPlan || plan.weeklyPlan.length === 0) {
+            errors.push('Plan has no days');
+        }
+
+        // Check each day has blocks
+        plan.weeklyPlan?.forEach((day, idx) => {
+            if (!day.blocks || day.blocks.length === 0) {
+                // Only error if it's not explicitly a rest day
+                if (day.focus?.toLowerCase().includes('rest') || day.focus?.toLowerCase().includes('recovery')) {
+                    // Rest day is OK with empty blocks
+                } else {
+                    errors.push(`Day ${idx + 1} (${day.focus}) missing blocks - not marked as rest day`);
+                }
+            } else {
+                // Warmup validation: enforce 5-7 exercises
+                const warmupCount = day.blocks?.flatMap(b => b.exercises || []).filter(ex => ex.category === 'warmup').length || 0;
+                if (warmupCount < 5) {
+                    errors.push(`Day ${idx + 1} warmup too short (need 5-7 exercises, found ${warmupCount})`);
+                }
+                if (warmupCount > 7) {
+                    errors.push(`Day ${idx + 1} warmup too long (need 5-7 exercises, found ${warmupCount})`);
+                }
+                
+                // Cooldown validation: if present, need 2-4 exercises
+                const cooldownCount = day.blocks?.flatMap(b => b.exercises || []).filter(ex => ex.category === 'cooldown').length || 0;
+                if (cooldownCount > 0 && cooldownCount < 2) {
+                    errors.push(`Day ${idx + 1} cooldown too short (need 2-4 if present, found ${cooldownCount})`);
+                }
+                if (cooldownCount > 4) {
+                    errors.push(`Day ${idx + 1} cooldown too long (need 2-4 if present, found ${cooldownCount})`);
+                }
+            }
+        });
+
+        // Frequency validation: training days >= requested frequency
+        const freqNum = parseInt(opts.desiredFrequency || '0', 10);
+        if (freqNum > 0) {
+            const trainingDays = plan.weeklyPlan?.filter(day => {
+                const hasBlocks = day.blocks && day.blocks.length > 0;
+                const isRest = day.focus?.toLowerCase().includes('rest') || day.focus?.toLowerCase().includes('recovery');
+                return hasBlocks && !isRest;
+            }).length || 0;
+            
+            if (trainingDays < freqNum) {
+                errors.push(`Plan has ${trainingDays} training days, but user requested ${freqNum} days/week`);
+            }
+            
+            // Fill rest days if needed (validation only - generation should handle this)
+            if (plan.weeklyPlan && plan.weeklyPlan.length < 7) {
+                errors.push(`Plan must have 7 days (found ${plan.weeklyPlan.length})`);
+            }
+        }
+
+        // Movement balance across week: ensure coverage of squat/hinge/push/pull/carry/core
+        const categories = { squat: 0, hinge: 0, push: 0, pull: 0, carry: 0, core: 0 };
+        plan.weeklyPlan?.forEach(day => {
+            day.blocks?.forEach(block => {
+                block.exercises?.forEach(ex => {
+                    const name = ex.exercise_name.toLowerCase();
+                    if (name.includes('squat') || name.includes('lunge') || name.includes('step-up')) categories.squat++;
+                    if (name.includes('deadlift') || name.includes('hinge') || name.includes('hip thrust') || name.includes('good morning')) categories.hinge++;
+                    if (name.includes('press') || name.includes('push') || name.includes('dip') || name.includes('fly')) categories.push++;
+                    if (name.includes('row') || name.includes('pull') || name.includes('chin') || name.includes('lat pulldown')) categories.pull++;
+                    if (name.includes('carry') || name.includes('walk') || name.includes('farm')) categories.carry++;
+                    if (name.includes('plank') || name.includes('core') || name.includes('pallof') || name.includes('dead bug') || name.includes('bird dog')) categories.core++;
+                });
+            });
+        });
+        const missingCategories = Object.entries(categories).filter(([, v]) => v === 0).map(([k]) => k);
+        if (missingCategories.length > 2) {
+            errors.push(`Movement balance missing: ${missingCategories.join(', ')} (need at least 4 of 6 patterns)`);
+        }
+
+        // Session length alignment: total exercises per day consistent with preferred_session_length
+        const pref = opts.preferredSessionLength ? parseInt(opts.preferredSessionLength, 10) : 0;
+        if (pref) {
+            // Fewer exercises for 30-45 min, more for 60-75 min
+            const minPerDay = pref <= 30 ? 6 : pref <= 45 ? 8 : pref <= 60 ? 10 : 12;
+            const maxPerDay = pref <= 30 ? 10 : pref <= 45 ? 14 : pref <= 60 ? 18 : 22;
+            
+            plan.weeklyPlan?.forEach((day, idx) => {
+                const exCount = day.blocks?.reduce((sum, b) => sum + (b.exercises?.length || 0), 0) || 0;
+                const isRest = day.focus?.toLowerCase().includes('rest') || day.focus?.toLowerCase().includes('recovery');
+                
+                if (!isRest && exCount > 0) {
+                    if (exCount < minPerDay) {
+                        errors.push(`Day ${idx + 1} has too few exercises (${exCount}) for ${pref} min session (min: ${minPerDay})`);
+                    }
+                    if (exCount > maxPerDay) {
+                        errors.push(`Day ${idx + 1} has too many exercises (${exCount}) for ${pref} min session (max: ${maxPerDay})`);
+                    }
+                }
+            });
+        }
+
+        // Sport alignment: require at least one exercise from sport guidelines if provided
+        if (opts.sport && opts.sportGuidelines && opts.sportGuidelines.length > 0) {
+            const topExercises = opts.sportGuidelines.flatMap((g: any) => g.top_exercises || []).map((e: string) => e.toLowerCase());
+            if (topExercises.length > 0) {
+                const allExercises = plan.weeklyPlan.flatMap(day => day.blocks.flatMap(block => block.exercises.map(ex => ex.exercise_name.toLowerCase())));
+                const match = allExercises.some(ex => topExercises.some(te => ex.includes(te) || te.includes(ex)));
+                if (!match) {
+                    errors.push(`No sport-specific priority exercises found for ${opts.sport}. Include at least one: ${topExercises.slice(0, 3).join(', ')}`);
+                }
+            }
+        }
+
+        return { valid: errors.length === 0, errors };
+    };
+
+    // Check if we should use optimized knowledge (token reduction)
+    let systemPromptGenerate: string;
+    
+    if (useOptimizedKnowledge) {
+        const bmi = profileExtras?.weight && profileExtras?.height ? (profileExtras.weight / ((profileExtras.height / 100) ** 2)) : null;
+        const profileBlock = `User Profile
+- Sex: ${profileExtras?.sex || 'unspecified'}
+- Athletic level: ${profileExtras?.athletic_level || 'unspecified'}
+- Training age (years): ${profileExtras?.training_age_years ?? 'unspecified'}
+- Body type: ${profileExtras?.body_type || 'unspecified'}
+- Equipment: ${profileExtras?.equipment || 'unspecified'}
+- Preferred session length: ${profileExtras?.preferred_session_length || 'unspecified'} minutes
+- Weight: ${profileExtras?.weight ? `${profileExtras.weight}kg` : 'unspecified'}
+- Height: ${profileExtras?.height ? `${profileExtras.height}cm` : 'unspecified'}
+- Derived BMI: ${bmi ? bmi.toFixed(1) : 'n/a'}
+`;
+
+        // Use cached compressed guidelines from knowledgeService (already fetched above)
+        const sexBullets = constraints.sex;
+        const sportBullets = constraints.sport;
+        const bodyBullets = constraints.body;
+        const injuryBullets = constraints.injury;
+        systemPromptGenerate = `REBLD AI Workout Planner - Intelligent Selection Mode
+
+${profileBlock}
+
+Relevant Guidelines (compressed):
+- Sex-specific: ${sexBullets.length ? sexBullets.join(' | ') : 'none'}
+- Sport-specific: ${sportBullets.length ? sportBullets.join(' | ') : 'none'}
+- Body-context: ${bodyBullets.length ? bodyBullets.join(' | ') : 'none'}
+- Injury-aware: ${injuryBullets.length ? injuryBullets.join(' | ') : 'none'}
+
+You are creating a personalized workout plan using our INTELLIGENT exercise database with performance tracking and injury awareness.
+
+**User Context:**
+- Goal: ${goal}
+- Experience: ${experience}
+- Frequency: ${frequency} days/week
+- Pain Points: ${painPoints.join(', ') || 'None'}
+- Sport: ${sport || 'None'}
+- Notes: ${notes || 'None'}
+
+**INTELLIGENT EXERCISE SELECTION:**
+Our database tracks:
+- Sport-specific performance data (exercises proven to work for their sport)
+- Injury contraindications (exercises to avoid based on pain points)
+- User performance history (what has worked before)
+- Therapeutic benefits (exercises that help with recovery)
+
+**EXERCISE SELECTION STRATEGY:**
+1. For sport-specific users → Prioritize exercises with high sport ratings (8-10/10)
+2. For users with pain → AVOID exercises with injury contraindications
+3. Include therapeutic exercises for their pain areas
+4. Use S-tier exercises for fundamentals, A-tier for variety
+
+**INJURY-AWARE RULES:**
+- Knee pain → AVOID: deep squats, lunges, jump exercises. USE: box squats, leg press, single-leg work
+- Lower back pain → AVOID: deadlifts, bent rows, good mornings. USE: trap bar deadlift, chest-supported rows
+- Shoulder pain → AVOID: overhead press, dips, upright rows. USE: landmine press, neutral grip work
+- If pain is mentioned, include 1-2 therapeutic exercises per workout
+
+**SEX / BODY CONTEXT RULES:**
+- If sex is female: prioritize hip/knee stability, offer pelvic-floor-safe core options; adjust very high-impact plyos only if athletic level is low. If pregnant/postpartum (if noted), avoid Valsalva and supine in late stages.
+- If sex is male: no automatic bulking bias; still balance movement patterns and conditioning.
+- DO NOT equate higher weight with low fitness. Use BMI + athletic level + body type. If BMI > 32 AND athletic level is low → reduce high-impact and add joint-friendly conditioning (sled/row/bike). If body_type is muscular or athletic_level is high → keep robust strength loading with joint-friendly conditioning, not blanket reductions.
+
+**SPORT-SPECIFIC PRIORITIES:**
+- Boxing → Heavy bag work, medicine ball slams, core rotation
+- HYROX → Sled work, wall balls, farmers carries, running intervals
+- Rock climbing → Pull-ups, finger strength, antagonist training
+- Basketball → Jump training, agility work, single-leg strength
+- Soccer → Agility ladders, single-leg work, sprint intervals
+- Tennis → Rotational power, lateral movement, shoulder stability
+
+**WARMUP MANDATE:** Each day MUST start with 5-7 SPECIFIC warmup exercises
+**COOLDOWN MANDATE:** Each day SHOULD end with 2-4 SPECIFIC stretching exercises
+
+Generate a complete 7-day plan prioritizing SAFE and EFFECTIVE exercises for this user.`;
+    } else {
+        // Use the full traditional prompt
+        systemPromptGenerate = `You are an elite, evidence-based personal trainer and exercise physiologist for the REBLD app. Your task is to create a world-class, deeply personalized 7-day workout plan based on the LATEST scientific research and best practices from reputable sources.
+
+**CRITICAL: Exercise Selection Philosophy**
+- Do NOT check any database or limit yourself to common exercises
+- Select exercises based on WHAT IS BEST for the user's goals, NOT what's convenient
+- Use exercises from current exercise science, biomechanics research, and proven training methodologies
+- Prioritize evidence-based exercises from sources like NSCA, ACSM, research journals, and respected strength coaches
+- If an uncommon but highly effective exercise fits better, USE IT
+- Every exercise you select will be saved to a database with detailed explanations, so choose the BEST options
 
 **Your Mandates (Non-Negotiable):**
 1.  **Block-Based Architecture**: You MUST structure the entire workout into a sequence of 'Workout Blocks' as defined in the schema.
-2.  **Deep Personalization**: You MUST synthesize all user inputs to create a truly bespoke plan.
-3.  **Language Interpretation**: The user might use colloquial language. You must interpret this and translate it into a scientifically valid training goal.
-4.  **Pain & Limitation Protocol**: If the user reports pain points, you MUST intelligently select exercises that avoid stressing those areas and include prehab/rehab exercises.
-5.  **Sport-Specificity (SAID Principle)**: If a sport is specified, the plan MUST incorporate relevant exercises.
-6.  **Decomposition Mandate**: For warm-ups and cool-downs, you MUST provide a list of 2-3 specific exercises.
-7.  **Advanced Metrics Mandate**: You MUST include RPE targets, appropriate \`rest_period_s\`, and \`one_rep_max_percentage\` where applicable.
+2.  **Evidence-Based Exercise Selection**: Choose exercises based on LATEST research and best practices. Don't limit yourself to only common exercises.
+3.  **Deep Personalization**: You MUST synthesize all user inputs to create a truly bespoke plan.
+4.  **Language Interpretation**: The user might use colloquial language. You must interpret this and translate it into a scientifically valid training goal.
+5.  **Pain & Limitation Protocol**: If the user reports pain points, you MUST intelligently select exercises that avoid stressing those areas and include prehab/rehab exercises based on current rehabilitation science.
+6.  **Sport-Specificity (SAID Principle)**: If a sport is specified, the plan MUST incorporate relevant exercises from sport science and athletic performance research.
+7.  **Warmup & Cooldown Mandate**: 
+    - For warm-ups: Create a SEPARATE block with category='warmup' containing 5-7 SPECIFIC exercises (e.g., "Cat-Cow Stretch", "Leg Swings", "Band Pull-Aparts", "Hip Circles", "World's Greatest Stretch", "Arm Circles", "T-Spine Rotations", "Walking Lunges", "Hip Flexor Stretch", "Shoulder Dislocations")
+    - NEVER use generic names like "Main Warmup" or "General Warmup" - always list SPECIFIC exercises
+    - Each warmup exercise should have: exercise_name (specific!), category='warmup', and appropriate metrics_template (duration or reps)
+    - Warm-ups MUST be comprehensive and prepare the entire body - include mobility, activation, and dynamic movement exercises
+    - For cool-downs: Create a SEPARATE block with category='cooldown' containing 2-4 SPECIFIC stretching exercises
+8.  **Advanced Metrics Mandate**: You MUST include RPE targets, appropriate \`rest_period_s\`, and \`one_rep_max_percentage\` where applicable based on current periodization science.
+
+**Scientific Sources to Consider:**
+- Latest NSCA (National Strength and Conditioning Association) guidelines
+- Current ACSM (American College of Sports Medicine) recommendations
+- Recent peer-reviewed exercise science research
+- Biomechanics and movement quality research
+- Evidence-based strength and conditioning methodologies
+- Rehabilitation and prehab research for injury prevention
 
 **User's Profile:**
 - Primary Goal: ${goal}
@@ -415,27 +707,106 @@ export const generateNewWorkoutPlan = async (
 - Sport: ${sport || 'Not specified.'}
 - Additional Notes: ${notes || 'None.'}
 
+**CRITICAL: Goal Interpretation**
+- Pay special attention to the user's goal description and additional notes
+- If the user mentions specific body parts (e.g., "bigger butt", "bigger arms"), prioritize exercises that target those areas
+- If they mention aesthetic goals, focus on hypertrophy, muscle definition, and body composition
+- If they mention performance goals (e.g., "run faster", "lift heavier"), prioritize exercises that improve those specific metrics
+- Translate colloquial language into scientifically valid training principles
+- The user's goal details are their PRIMARY motivation - ensure the plan directly addresses them
+
 **Instructions:**
 - Create a 7-day plan in the \`weeklyPlan\` array. The number of training days must match the user's frequency. The remaining days MUST be 'Rest' days with an empty 'blocks' array.
+- Select exercises that are OPTIMAL for the user's goals, not just convenient or common
+- Every exercise will later be explained in detail and saved to a database, so choose exercises that serve the user's best interests
+- **CRITICAL FOR WARMUPS**: Each workout day MUST start with a warmup block containing 5-7 SPECIFIC exercises (not generic names!). Examples: "Cat-Cow Stretch", "Leg Swings", "Band Pull-Aparts", "Hip Circles", "Arm Circles", "T-Spine Rotations", "Walking Lunges", "World's Greatest Stretch", "Hip Flexor Stretch", "Shoulder Dislocations", "Dead Bug", "Bird Dog". Warm-ups should be comprehensive and prepare the entire body for movement.
+- **CRITICAL FOR COOLDOWNS**: Each workout day SHOULD end with a cooldown block containing 2-4 SPECIFIC stretching exercises
 - The final output must be ONLY the JSON object.`;
+    }
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
-            contents: "Please generate the workout plan based on my detailed profile.",
-            config: {
-                systemInstruction: systemPromptGenerate,
-                responseMimeType: "application/json",
-                responseSchema: responseSchema,
-                thinkingConfig: { thinkingBudget: 32768 }
-            }
-        });
+        const maxAttempts = 2;
+        let validationFeedback: string | null = null;
+        let lastErrors: string[] = [];
 
-        const jsonString = response.text.trim();
-        const parsedPlan = JSON.parse(jsonString);
-        return parsedPlan as WorkoutPlan;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const systemInstruction = validationFeedback
+                ? `${systemPromptGenerate}\n\nVALIDATION ERRORS FROM PREVIOUS ATTEMPT: ${validationFeedback}\nFIX THEM BEFORE RESPONDING.`
+                : systemPromptGenerate;
+
+            console.log('Calling Gemini API with model: gemini-2.5-pro');
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-pro',
+                contents: "Please generate the workout plan based on my detailed profile.",
+                config: {
+                    systemInstruction,
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema,
+                    thinkingConfig: { thinkingBudget: 32768 }
+                }
+            });
+
+            console.log('Gemini API response received');
+            const jsonString = response.text.trim();
+            console.log('Response text length:', jsonString.length);
+            console.log('Response preview:', jsonString.substring(0, 200));
+            
+            const parsedPlan = JSON.parse(jsonString);
+            console.log('Successfully parsed plan. Days:', parsedPlan.weeklyPlan?.length);
+
+      const validation = validatePlan(parsedPlan as WorkoutPlan, { sport, sportGuidelines, desiredFrequency: frequency, preferredSessionLength: profileExtras?.preferred_session_length });
+            if (validation.valid) {
+                // Log successful generation
+                try {
+                    const profileKey = JSON.stringify({ goal, experience, sex: profileExtras?.sex, sport, bmiBand: band }).toLowerCase().replace(/\s+/g, '_');
+                    await convex.mutation(api.mutations.logGenerationAttempt, {
+                        profile_key: profileKey,
+                        user_id: null, // Could be passed if available
+                        success: true,
+                        validation_errors: [],
+                        attempt_count: attempt + 1,
+                        goal,
+                        experience,
+                        sport: sport || undefined,
+                    });
+                } catch (logError) {
+                    console.warn('Failed to log generation:', logError);
+                }
+                return parsedPlan as WorkoutPlan;
+            } else {
+                lastErrors = validation.errors;
+                validationFeedback = validation.errors.join(' | ');
+                console.warn('Plan validation failed, retrying...', validation.errors);
+            }
+        }
+
+        // Log failed generation
+        try {
+            const profileKey = JSON.stringify({ goal, experience, sex: profileExtras?.sex, sport, bmiBand: band }).toLowerCase().replace(/\s+/g, '_');
+            await convex.mutation(api.mutations.logGenerationAttempt, {
+                profile_key: profileKey,
+                user_id: null,
+                success: false,
+                validation_errors: lastErrors,
+                attempt_count: maxAttempts,
+                goal,
+                experience,
+                sport: sport || undefined,
+            });
+        } catch (logError) {
+            console.warn('Failed to log generation failure:', logError);
+        }
+
+        throw new Error(`Validation failed after retries: ${lastErrors.join('; ')}`);
 
     } catch (error: any) {
+        console.error('Error in generateNewWorkoutPlan:', error);
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            response: error.response,
+            status: error.status
+        });
         throw handleApiError(error, 'generateNewWorkoutPlan');
     }
 };
@@ -450,8 +821,34 @@ export const parseWorkoutPlan = async (rawInput: string | File, useThinkingMode:
   const ai = new GoogleGenAI({ apiKey });
 
   const model = useThinkingMode ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+  
+  // Pre-process text input to expand abbreviations
+  let processedInput = rawInput;
+  let detectedFormat = 'standard';
+  let colloquialTermsInfo = '';
+  
+  if (typeof rawInput === 'string') {
+    // Expand abbreviations for better parsing
+    processedInput = resolveAbbreviations(rawInput);
+    
+    // Identify workout format
+    detectedFormat = detectWorkoutFormat(processedInput);
+    console.log('Detected workout format:', detectedFormat);
+    
+    // Log colloquial terms found
+    const colloquialTerms = identifyColloquialTerms(processedInput);
+    if (colloquialTerms.size > 0) {
+      const termsArray = Array.from(colloquialTerms.entries());
+      console.log('Colloquial terms found:', termsArray);
+      colloquialTermsInfo = `\nDetected colloquial terms: ${termsArray.map(([term, meaning]) => `"${term}" = ${meaning}`).join(', ')}`;
+    }
+  }
+  
+  // Enhanced system instruction with format detection info
+  const enhancedSystemPrompt = systemPromptParse + `\n\nDETECTED WORKOUT FORMAT: ${detectedFormat}${colloquialTermsInfo}`;
+  
   const config: any = {
-      systemInstruction: systemPromptParse,
+      systemInstruction: enhancedSystemPrompt,
       responseMimeType: "application/json",
       responseSchema: responseSchema,
   };
@@ -461,10 +858,10 @@ export const parseWorkoutPlan = async (rawInput: string | File, useThinkingMode:
   }
   
   let contents: string | { parts: Part[] };
-  if (typeof rawInput === 'string') {
-      contents = rawInput;
+  if (typeof processedInput === 'string') {
+      contents = processedInput;
   } else {
-      const filePart = await fileToGenerativePart(rawInput);
+      const filePart = await fileToGenerativePart(processedInput);
       contents = { parts: [filePart] };
   }
 
@@ -492,6 +889,194 @@ export const parseWorkoutPlan = async (rawInput: string | File, useThinkingMode:
   }
 };
 
+/**
+ * Generate a detailed, comprehensive exercise explanation
+ * This provides in-depth information suitable for database storage
+ */
+export const explainExerciseDetailed = async (
+  exerciseName: string,
+  exerciseNotes?: string,
+  language: 'en' | 'de' = 'en'
+): Promise<{
+  explanation: string;
+  muscles_worked: string[];
+  form_cue: string;
+  common_mistake: string;
+  equipment_required: string[];
+  contraindications: string[];
+  movement_pattern: string;
+  exercise_tier: 'S' | 'A' | 'B' | 'C';
+  primary_category: 'warmup' | 'main' | 'cooldown';
+  injury_risk: 'low' | 'moderate' | 'high';
+  evidence_level: 'high' | 'moderate' | 'low';
+  minimum_experience_level: string;
+  normalized_name: string;
+}> => {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("API_KEY environment variable not set.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  const languageInstruction = language === 'de'
+    ? 'IMPORTANT: Provide ALL text fields (explanation, form_cue, common_mistake, muscles_worked) in GERMAN (Deutsch). Use German anatomical terms for muscles.'
+    : 'Provide all text fields in English.';
+
+  const prompt = `You are an expert exercise physiologist and strength coach. Analyze this exercise name and provide COMPREHENSIVE metadata.
+
+${languageInstruction}
+
+CRITICAL FIRST STEP: Validate the exercise name. If "${exerciseName}" is NOT a real, recognized exercise (e.g., "Cable Farmers Walk" doesn't exist - it should be "Farmers Walk" or "Cable Crossover"), provide the CORRECT standard name. Common mistakes:
+- Adding "Cable" to exercises that don't use cables
+- Inventing equipment combinations that don't exist
+- Misnaming exercises
+- Generic names like "barbell_exercise" or "barbell_explosive" - these need proper names
+
+Exercise Name Provided: ${exerciseName}
+${exerciseNotes ? `Context/Notes: ${exerciseNotes}` : ''}
+
+CRITICAL: You MUST provide ALL fields below. Every field is REQUIRED and must be a valid, non-null value.
+
+Provide COMPLETE metadata:
+
+1. **Normalized Exercise Name**: The correct, standard name for this exercise (use common gym terminology). If the provided name is invalid or generic, provide the closest real exercise name.
+
+2. **Comprehensive Explanation** (3-5 sentences):
+   - What the exercise is and its primary purpose
+   - Primary muscles worked (be specific - e.g., "pectoralis major", "quadriceps femoris")
+   - Secondary/assistant muscles involved
+   - Movement pattern (push/pull/squat/hinge/etc.)
+   - When and why this exercise is beneficial
+
+3. **Equipment Required**: Array of ALL equipment needed (e.g., ["barbell", "squat_rack"] or ["bodyweight"] or ["dumbbells", "bench"]). Use standard names: barbell, dumbbell, kettlebell, cable_machine, resistance_band, pull_up_bar, bench, squat_rack, smith_machine, leg_press, etc. If bodyweight only, use ["bodyweight"]. NEVER leave empty or use "none". Must be a non-empty array.
+
+4. **Movement Pattern**: One of: squat, hinge, push_horizontal, push_vertical, pull_horizontal, pull_vertical, carry, core, mobility, plyometric, cardio, unknown
+
+5. **Exercise Tier**: S (exceptional value), A (excellent), B (good), C (acceptable). Consider: effectiveness, safety, transferability, time efficiency.
+
+6. **Primary Category**: warmup, main, or cooldown
+
+7. **Injury Risk**: low, moderate, or high (consider load, movement complexity, common injury patterns)
+
+8. **Contraindications**: Array of specific conditions/injuries where this exercise should be avoided (e.g., ["lower_back_pain", "knee_injury", "shoulder_impingement"]). If none apply, use empty array []. Must be an array (can be empty).
+
+9. **Evidence Level**: high (well-researched), moderate (some research), low (anecdotal but accepted)
+
+10. **Minimum Experience Level**: Analyze the exercise complexity, required technique, and injury risk to determine: "beginner", "intermediate", or "advanced". 
+   - Beginner: Simple movements, low skill requirement, minimal risk (e.g., bodyweight squats, planks)
+   - Intermediate: Moderate technique required, some coordination needed (e.g., barbell squats, bench press)
+   - Advanced: Complex movement patterns, high skill/coordination required, or very heavy loads (e.g., olympic lifts, advanced plyometrics)
+   CRITICAL: This must be based on actual exercise analysis, NOT defaulted to "beginner". Think about what skill level is truly needed.
+
+11. **Form Cue**: The single most important form cue for safe execution
+
+12. **Common Mistake**: The most common form error and how to avoid it
+
+13. **Muscles Worked**: Array of all major muscles (anatomical names). Must include at least 2-3 primary muscles.
+
+Your response must be accurate and complete. Every field must have a valid value. If the exercise name seems invalid, suggest the closest real exercise name and analyze that instead.
+
+Format as JSON:`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash', // COST OPTIMIZATION: Use Flash for exercise explanations
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            normalized_name: { type: Type.STRING },
+            explanation: { type: Type.STRING },
+            muscles_worked: { type: Type.ARRAY, items: { type: Type.STRING } },
+            form_cue: { type: Type.STRING },
+            common_mistake: { type: Type.STRING },
+            equipment_required: { type: Type.ARRAY, items: { type: Type.STRING } },
+            contraindications: { type: Type.ARRAY, items: { type: Type.STRING } },
+            movement_pattern: { 
+              type: Type.STRING,
+              enum: ["squat", "hinge", "push_horizontal", "push_vertical", "pull_horizontal", "pull_vertical", "carry", "core", "mobility", "plyometric", "cardio", "unknown"]
+            },
+            exercise_tier: {
+              type: Type.STRING,
+              enum: ["S", "A", "B", "C"]
+            },
+            primary_category: {
+              type: Type.STRING,
+              enum: ["warmup", "main", "cooldown"]
+            },
+            injury_risk: {
+              type: Type.STRING,
+              enum: ["low", "moderate", "high"]
+            },
+            evidence_level: {
+              type: Type.STRING,
+              enum: ["high", "moderate", "low"]
+            },
+            minimum_experience_level: { type: Type.STRING },
+          },
+          required: [
+            "normalized_name", "explanation", "muscles_worked", "form_cue", "common_mistake",
+            "equipment_required", "contraindications", "movement_pattern", "exercise_tier",
+            "primary_category", "injury_risk", "evidence_level", "minimum_experience_level"
+          ],
+        },
+      },
+    });
+
+    const jsonString = response.text.trim();
+    const parsed = JSON.parse(jsonString);
+    
+    // Validate and ensure all required fields are present and non-null
+    if (!parsed.minimum_experience_level || typeof parsed.minimum_experience_level !== 'string') {
+      // Smart default based on other fields
+      let smartDefault = "beginner";
+      if (parsed.injury_risk === "high" || parsed.exercise_tier === "S") {
+        smartDefault = "advanced";
+      } else if (parsed.injury_risk === "moderate" || parsed.movement_pattern === "plyometric") {
+        smartDefault = "intermediate";
+      }
+      parsed.minimum_experience_level = smartDefault;
+    }
+    
+    // Ensure normalized_name is valid
+    if (!parsed.normalized_name || parsed.normalized_name.trim() === "") {
+      parsed.normalized_name = exerciseName;
+    }
+    
+    // Ensure equipment_required is an array with at least one item
+    if (!Array.isArray(parsed.equipment_required) || parsed.equipment_required.length === 0) {
+      parsed.equipment_required = ["bodyweight"];
+    }
+    
+    return {
+      explanation: parsed.explanation || `Exercise: ${parsed.normalized_name || exerciseName}`,
+      muscles_worked: Array.isArray(parsed.muscles_worked) && parsed.muscles_worked.length > 0 
+        ? parsed.muscles_worked 
+        : ["multiple muscles"],
+      form_cue: parsed.form_cue || "Maintain proper form throughout the movement",
+      common_mistake: parsed.common_mistake || "Rushing through the movement without proper control",
+      equipment_required: parsed.equipment_required,
+      contraindications: Array.isArray(parsed.contraindications) ? parsed.contraindications : [],
+      movement_pattern: parsed.movement_pattern || "unknown",
+      exercise_tier: parsed.exercise_tier || "B",
+      primary_category: parsed.primary_category || "main",
+      injury_risk: parsed.injury_risk || "moderate",
+      evidence_level: parsed.evidence_level || "moderate",
+      minimum_experience_level: parsed.minimum_experience_level, // Already validated above
+      normalized_name: parsed.normalized_name || exerciseName,
+    };
+  } catch (error: any) {
+    throw handleApiError(error, 'explainExerciseDetailed');
+  }
+};
+
+/**
+ * Quick exercise explanation (for on-demand display)
+ * Uses detailed explanation if available, otherwise generates brief one
+ */
 export const explainExercise = async (exerciseName: string, exerciseNotes?: string): Promise<string> => {
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -524,11 +1109,145 @@ Keep it concise, practical, and helpful for someone in the gym right now.`;
   }
 };
 
+/**
+ * Batch explain multiple exercises in a single API call (33% cost savings)
+ * This is more efficient than calling explainExercise multiple times
+ */
+export async function batchExplainExercises(exerciseNames: string[]): Promise<Record<string, {
+  explanation: string;
+  muscles_worked: string[];
+  form_cue: string;
+  common_mistake: string;
+}>> {
+  if (exerciseNames.length === 0) {
+    return {};
+  }
+
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error('Gemini API key not configured');
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+
+    const prompt = `You are a professional strength and conditioning coach. Provide concise explanations for these ${exerciseNames.length} exercises.
+
+For each exercise, provide:
+1. Brief explanation (2-3 sentences)
+2. Primary muscles worked (array)
+3. One key form cue
+4. One common mistake to avoid
+
+Exercises:
+${exerciseNames.map((name, i) => `${i + 1}. ${name}`).join('\n')}
+
+Return as JSON object with exercise names as keys:
+{
+  "exercise_name": {
+    "explanation": "...",
+    "muscles_worked": ["muscle1", "muscle2"],
+    "form_cue": "...",
+    "common_mistake": "..."
+  }
+}`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        temperature: 0.3,
+      }
+    });
+
+    const text = response.text.trim();
+
+    // Parse JSON response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return parsed;
+    }
+
+    throw new Error('Failed to parse batch exercise response');
+  } catch (error: any) {
+    console.error('Batch explain exercises error:', error);
+    throw handleApiError(error, 'batchExplainExercises');
+  }
+}
+
 export const generateWeeklyProgression = async (plan: WorkoutPlan, logs: WorkoutLog[], feedback: 'too easy' | 'just right' | 'too hard'): Promise<WorkoutPlan> => {
     // This function would need a significant refactor to navigate the new block structure.
     // For now, we'll return the plan unmodified to prevent errors.
     console.warn("generateWeeklyProgression needs to be updated for the new WorkoutBlock architecture.");
     return plan;
+}
+
+/**
+ * Validate that the user's question is workout-related
+ * Less strict when there's ongoing conversation (allows short contextual responses)
+ */
+export function isWorkoutRelated(message: string, hasConversationHistory: boolean = false): boolean {
+  const lowerMessage = message.toLowerCase();
+
+  // If there's conversation history, allow shorter responses
+  // (user might be answering AI's follow-up questions)
+  if (hasConversationHistory && message.length < 50) {
+    // Allow common short responses in workout context
+    const contextualWords = [
+      'yes', 'no', 'pain', 'hurt', 'sore', 'injury', 'shoulder', 'knee', 'back',
+      'prefer', 'easier', 'harder', 'different', 'more', 'less', 'too',
+      'equipment', 'barbell', 'dumbbell', 'bodyweight', 'machine',
+      'time', 'tired', 'fatigue', 'busy', 'variation', 'swap', 'change'
+    ];
+
+    const hasContextualWord = contextualWords.some(word => lowerMessage.includes(word));
+    if (hasContextualWord) {
+      return true; // Valid contextual response
+    }
+  }
+
+  // Original keyword check for new conversations
+  const fitnessKeywords = [
+    'workout', 'exercise', 'train', 'lift', 'rep', 'set', 'muscle',
+    'strength', 'cardio', 'plan', 'routine', 'squat', 'bench', 'deadlift',
+    'pull', 'push', 'leg', 'arm', 'chest', 'back', 'shoulder',
+    'rest', 'recovery', 'form', 'technique', 'weight', 'rpe', 'intensity',
+    'warm', 'cool', 'stretch', 'mobility', 'fitness', 'gym', 'program',
+    'progression', 'volume', 'frequency', 'nutrition', 'protein', 'diet',
+    'injury', 'pain', 'sore', 'fatigue', 'overtraining', 'superset', 'amrap',
+    'core', 'abs', 'glute', 'quad', 'hamstring', 'bicep', 'tricep',
+    'calorie', 'macros', 'hypertrophy', 'endurance', 'speed', 'agility',
+    'plyometric', 'interval', 'hiit', 'circuit', 'tempo', 'pr', 'max',
+    'swap', 'change', 'modify', 'adjust', 'add', 'remove' // Added action words
+  ];
+
+  const hasFitnessKeyword = fitnessKeywords.some(keyword =>
+    lowerMessage.includes(keyword)
+  );
+
+  // Reject obvious off-topic patterns (only for longer messages)
+  if (message.length > 10) {
+    const offTopicPatterns = [
+      /weather|forecast|temperature/i,
+      /news|politics|election/i,
+      /joke|funny|laugh|humor/i,
+      /movie|film|tv show|series/i,
+      /recipe|cook(?!.*workout)/i, // Allow "cooking a workout" but not recipes
+      /stock|crypto|bitcoin|investment/i,
+      /code|programming|debug|software/i,
+      /what.*time|when.*open|where.*located/i,
+      /tell me about|write.*story|poem/i
+    ];
+
+    const isOffTopic = offTopicPatterns.some(pattern => pattern.test(message));
+    if (isOffTopic) {
+      return false;
+    }
+  }
+
+  return hasFitnessKeyword;
 }
 
 export const initializeChatSession = (plan: WorkoutPlan, dayOfWeek: number): Chat => {
@@ -570,17 +1289,95 @@ export const initializeChatSession = (plan: WorkoutPlan, dayOfWeek: number): Cha
         }
     };
 
-    const systemInstruction = [
-        'You are REBLD Assistant, helping users adapt a block-based workout plan.',
-        'Schema: weeklyPlan[] has days with day_of_week (1..7), focus, and blocks.',
-        'Blocks: type single|superset|amrap, optional title, and exercises[].',
-        'Exercises: exercise_name, category (warmup|main|cooldown), optional rpe, and metrics_template (see tool parameter schema).',
-        `Today is day ${dayOfWeek}. Prefer edits to that day unless the user specifies another.`,
-        'When the user asks to change the plan (swap/add), call a function (substituteExercise/addExercise). Keep responses concise.',
-    ].join('\n');
+    const getDayName = (dayNum: number): string => {
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        return days[dayNum - 1] || 'Unknown';
+    };
+
+    const formatPlanForContext = (plan: WorkoutPlan, dayOfWeek: number): string => {
+        if (!plan.weeklyPlan || plan.weeklyPlan.length === 0) return 'No plan available';
+
+        const today = plan.weeklyPlan.find(d => d.day_of_week === dayOfWeek);
+        if (!today) return 'No workout scheduled for today';
+
+        const exerciseCount = today.blocks?.reduce((sum, b) => sum + (b.exercises?.length || 0), 0) || 0;
+        return `${today.focus} - ${exerciseCount} exercises in ${today.blocks?.length || 0} blocks`;
+    };
+
+    const currentLang = i18n.language || 'en';
+    const languageInstruction = currentLang === 'de'
+      ? 'IMPORTANT: Respond in German (Deutsch). All your responses must be in German.'
+      : 'Respond in English.';
+
+    const systemInstruction = `You are REBLD's AI workout coach. Your ONLY purpose is to help users with their workout plans and training.
+
+${languageInstruction}
+
+STRICT RULES - You MUST follow these:
+1. ONLY answer questions about: workouts, exercises, training plans, fitness, nutrition related to training, recovery, form tips
+2. REFUSE to answer: weather, news, jokes, general knowledge, coding, politics, etc.
+3. If asked off-topic, respond: "I'm your workout coach! I can only help with training, exercises, and fitness questions. What would you like to know about your workout plan?"
+
+CAPABILITIES:
+- Swap exercises in the plan
+- Add new exercises
+- Modify sets/reps/rest periods
+- Provide form cues
+- Suggest alternatives for injuries
+- Answer training questions
+- Adjust weekly plan structure
+
+CONTEXT:
+Today is ${getDayName(dayOfWeek)}.
+Current plan: ${plan.name}
+${formatPlanForContext(plan, dayOfWeek)}
+
+Schema: weeklyPlan[] has days with day_of_week (1..7), focus, and blocks.
+Blocks: type single|superset|amrap, optional title, and exercises[].
+Exercises: exercise_name, category (warmup|main|cooldown), optional rpe, and metrics_template.
+
+**🧠 DATABASE INTELLIGENCE (Your Advantage Over Basic AI):**
+- 700+ exercises with complete metadata
+- Exercise tiers: S (fundamental), A (important), B (good), C (specialized)
+- Movement patterns: squat, hinge, push/pull, core, mobility, cardio, plyometric
+- Equipment requirements for every exercise
+- Injury contraindications and safe modifications
+- Sport-specific ratings (0-10) for 10 different sports
+- Evidence levels (high/moderate/low research backing)
+- Experience requirements (beginner/intermediate/advanced)
+
+**🎯 EXERCISE SUBSTITUTION PROTOCOL:**
+1. Ask WHY they want to swap (pain/preference/equipment/other)
+2. **IMPORTANT: Use database intelligence:**
+   - Pain → Filter out exercises with injury contraindications
+   - Sport → Prioritize exercises with 8-10/10 sport ratings
+   - Equipment → Match available equipment exactly
+   - Preference → Same tier + movement pattern
+3. **Explain your choice:** "I chose X because it has a 9/10 rating for your sport"
+4. Call substituteExercise
+
+**⚡ QUICK REFERENCE - TOP EXERCISES BY SPORT:**
+HYROX: sled_push (10/10), wall_ball (10/10), farmers_carry (9/10)
+Boxing: heavy_bag (10/10), medicine_ball_slam (9/10), core_rotation (9/10)
+Rock Climbing: pull_up (10/10), finger_strength (10/10), antagonist_work (9/10)
+Basketball: jump_training (9/10), single_leg_work (9/10), agility (8/10)
+
+**🏥 INJURY SAFETY PRIORITIES:**
+Knee pain → AVOID: deep squats, lunges, jumps
+Lower back → AVOID: deadlifts, bent rows, overhead
+Shoulder → AVOID: overhead press, dips, heavy pressing
+
+RESPONSE RULES:
+- Be concise (2-3 sentences max)
+- Use fitness terminology correctly
+- When suggesting exercise swaps, use the substituteExercise function
+- When adding exercises, use the addExercise function
+- Stay focused on the user's training goals
+
+Remember: You are a WORKOUT COACH, not a general assistant.`;
 
     return ai.chats.create({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-2.5-flash', // Using Flash for cost optimization
         config: {
             systemInstruction,
             tools: [
@@ -617,7 +1414,7 @@ export const analyzeTextSelection = async (selection: string, action: 'explain' 
     const prompt = getAnalysisPrompt(action, selection);
 
     try {
-        const response = await ai.models.generateContent({ model: 'gemini-2.5-pro', contents: prompt });
+        const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt }); // COST OPTIMIZATION: Use Flash for text analysis
         return response.text;
     } catch (error) {
         throw handleApiError(error, 'analyzeTextSelection');
@@ -634,7 +1431,7 @@ export const simpleGenerate = async (prompt: string, systemInstruction?: string)
     const ai = new GoogleGenAI({ apiKey });
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
+            model: 'gemini-2.5-flash', // COST OPTIMIZATION: Use Flash for simple generation
             contents: prompt,
             config: systemInstruction ? { systemInstruction } : undefined,
         });

@@ -1,0 +1,214 @@
+{
+  "guidelines": [
+    {
+      "goal": "aesthetic_physique",
+      "book_source": "Thinner Leaner Stronger by Michael Matthews",
+      "primary_exercises": [
+        {
+          "exercise_name": "hip_thrust",
+          "priority": 1,
+          "rationale": "Superior glute activation for aesthetic lower body development",
+          "programming": {
+            "sets": "3-4",
+            "reps": "12-15",
+            "rest": "60-90 seconds",
+            "frequency": "2-3x per week"
+          }
+        },
+        {
+          "exercise_name": "incline_dumbbell_press",
+          "priority": 2,
+          "rationale": "Builds upper chest for aesthetic chest proportions",
+          "programming": {
+            "sets": "3-4",
+            "reps": "8-12",
+            "rest": "90-120 seconds",
+            "frequency": "2x per week"
+          }
+        },
+        {
+          "exercise_name": "lateral_raises",
+          "priority": 3,
+          "rationale": "Builds shoulder width for V-taper aesthetic",
+          "programming": {
+            "sets": "3-4",
+            "reps": "12-20",
+            "rest": "60 seconds",
+            "frequency": "2-3x per week"
+          }
+        }
+      ],
+      "exercise_order": "1. Compounds (chest, back, legs), 2. Isolation (shoulders, arms), 3. Target weak points",
+      "volume_guidelines": "12-20 sets per muscle group per week, emphasizing problem areas",
+      "periodization": "Linear progression with periodic deloads every 6-8 weeks"
+    },
+    {
+      "goal": "strength_power",
+      "book_source": "Starting Strength by Mark Rippetoe",
+      "primary_exercises": [
+        {
+          "exercise_name": "barbell_back_squat",
+          "priority": 1,
+          "rationale": "Fundamental strength movement targeting entire lower body",
+          "programming": {
+            "sets": "3-5",
+            "reps": "3-5",
+            "rest": "3-5 minutes",
+            "frequency": "2-3x per week"
+          }
+        },
+        {
+          "exercise_name": "deadlift",
+          "priority": 2,
+          "rationale": "Ultimate test of full-body strength and power",
+          "programming": {
+            "sets": "3-5",
+            "reps": "1-5",
+            "rest": "3-5 minutes",
+            "frequency": "1-2x per week"
+          }
+        },
+        {
+          "exercise_name": "overhead_press",
+          "priority": 3,
+          "rationale": "Builds functional upper body pressing strength",
+          "programming": {
+            "sets": "3-5",
+            "reps": "3-5",
+            "rest": "3-5 minutes",
+            "frequency": "2-3x per week"
+          }
+        }
+      ],
+      "exercise_order": "1. Squat, 2. Bench/Press, 3. Deadlift, 4. Accessories",
+      "volume_guidelines": "Low volume (9-15 sets per week), high intensity (85%+ 1RM)",
+      "periodization": "Linear progression for beginners, periodization for advanced"
+    },
+    {
+      "goal": "athletic_performance",
+      "book_source": "Supertraining by Mel Siff",
+      "primary_exercises": [
+        {
+          "exercise_name": "power_clean",
+          "priority": 1,
+          "rationale": "Develops explosive power and rate of force development",
+          "programming": {
+            "sets": "5-6",
+            "reps": "2-3",
+            "rest": "3-5 minutes",
+            "frequency": "2-3x per week"
+          }
+        },
+        {
+          "exercise_name": "box_jumps",
+          "priority": 2,
+          "rationale": "Plyometric power development and jumping ability",
+          "programming": {
+            "sets": "4-6",
+            "reps": "3-5",
+            "rest": "2-3 minutes",
+            "frequency": "2x per week"
+          }
+        },
+        {
+          "exercise_name": "single_leg_rdl",
+          "priority": 3,
+          "rationale": "Unilateral strength and stability for sport movements",
+          "programming": {
+            "sets": "3-4",
+            "reps": "6-8 each leg",
+            "rest": "90 seconds",
+            "frequency": "2x per week"
+          }
+        }
+      ],
+      "exercise_order": "1. Power/explosive movements, 2. Strength, 3. Speed/agility, 4. Energy system work",
+      "volume_guidelines": "Moderate volume with emphasis on movement quality and power output",
+      "periodization": "Periodized around competition schedule with planned peaks"
+    },
+    {
+      "goal": "health_longevity",
+      "book_source": "Becoming a Supple Leopard by Kelly Starrett",
+      "primary_exercises": [
+        {
+          "exercise_name": "goblet_squat",
+          "priority": 1,
+          "rationale": "Maintains hip and ankle mobility while building functional strength",
+          "programming": {
+            "sets": "3-4",
+            "reps": "12-15",
+            "rest": "90 seconds",
+            "frequency": "3x per week"
+          }
+        },
+        {
+          "exercise_name": "farmers_walk",
+          "priority": 2,
+          "rationale": "Functional carrying strength and postural endurance",
+          "programming": {
+            "sets": "3-4",
+            "distance": "40-60 yards",
+            "rest": "2 minutes",
+            "frequency": "2x per week"
+          }
+        },
+        {
+          "exercise_name": "bird_dog",
+          "priority": 3,
+          "rationale": "Core stability and spine health maintenance",
+          "programming": {
+            "sets": "2-3",
+            "reps": "10-15 each side",
+            "rest": "60 seconds",
+            "frequency": "Daily"
+          }
+        }
+      ],
+      "exercise_order": "1. Mobility/activation, 2. Functional movements, 3. Stability/balance, 4. Recovery",
+      "volume_guidelines": "Low to moderate intensity with daily movement practice",
+      "periodization": "Consistent progressive loading with emphasis on movement quality"
+    },
+    {
+      "goal": "mobility_flexibility",
+      "book_source": "Becoming a Supple Leopard by Kelly Starrett",
+      "primary_exercises": [
+        {
+          "exercise_name": "worlds_greatest_stretch",
+          "priority": 1,
+          "rationale": "Addresses multiple mobility restrictions simultaneously",
+          "programming": {
+            "sets": "2-3",
+            "duration": "60 seconds each side",
+            "rest": "30 seconds",
+            "frequency": "Daily"
+          }
+        },
+        {
+          "exercise_name": "cat_cow_stretch",
+          "priority": 2,
+          "rationale": "Improves spinal mobility and awareness",
+          "programming": {
+            "sets": "2-3",
+            "reps": "10-15 slow repetitions",
+            "rest": "30 seconds",
+            "frequency": "Daily"
+          }
+        },
+        {
+          "exercise_name": "90_90_stretch",
+          "priority": 3,
+          "rationale": "Addresses hip internal and external rotation mobility",
+          "programming": {
+            "sets": "2-3",
+            "duration": "90 seconds each position",
+            "rest": "30 seconds",
+            "frequency": "Daily"
+          }
+        }
+      ],
+      "exercise_order": "1. Warm-up movements, 2. Dynamic stretching, 3. Static stretching, 4. Relaxation",
+      "volume_guidelines": "High frequency (daily) with moderate duration (20-30 minutes)",
+      "periodization": "Progressive range of motion increases with consistent daily practice"
+    }
+  ]
+}

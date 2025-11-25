@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { WorkoutLog } from '../types';
-import { TrophyIcon, TimerIcon, DumbbellIcon, RepeatIcon, CheckCircleIcon } from './icons';
+import { TrophyIcon, TimerIcon, DumbbellIcon, RepeatIcon, CheckCircleIcon, SparklesIcon } from './icons';
 import { useCountUp, useSequentialReveal, useHaptic } from '../hooks/useAnimations';
 import { notify } from './layout/Toast';
+import { Button } from './ui/button';
 
 interface VictoryScreenProps {
   sessionLog: WorkoutLog;
@@ -10,6 +12,7 @@ interface VictoryScreenProps {
 }
 
 export default function VictoryScreen({ sessionLog, onDone }: VictoryScreenProps) {
+  const { t } = useTranslation();
   const [showConfetti, setShowConfetti] = useState(true);
   const haptic = useHaptic();
 
@@ -52,116 +55,191 @@ export default function VictoryScreen({ sessionLog, onDone }: VictoryScreenProps
       navigator.share({
         title: 'REBLD Workout',
         text: shareText,
-      }).catch(() => {});
+      }).catch((error) => {
+        // User cancelled share dialog - this is expected, not an error
+        console.log('Share cancelled:', error.message);
+      });
     } else {
       navigator.clipboard.writeText(shareText);
-      notify({ type: 'success', message: 'Copied to clipboard!' });
+      notify({ type: 'success', message: t('victory.copiedToClipboard') });
     }
   };
 
   return (
-    <div className="min-h-screen w-full max-w-2xl mx-auto px-5 py-8 flex flex-col animate-scale-in relative overflow-hidden">
-      {/* Confetti Effect */}
+    <div className="min-h-screen w-full max-w-lg mx-auto px-4 py-6 flex flex-col relative overflow-hidden">
+      {/* Animated gradient background */}
+      <div className="absolute inset-0 gradient-animated opacity-40"></div>
+
+      {/* Radial burst effect */}
       {showConfetti && (
-        <div className="absolute inset-0 pointer-events-none">
-          {[...Array(50)].map((_, i) => (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          {[...Array(12)].map((_, i) => (
             <div
               key={i}
-              className="absolute w-2 h-2 bg-[var(--accent)] rounded-full animate-fade-in"
+              className="absolute w-1 bg-gradient-to-t from-[var(--accent)] to-transparent h-32 origin-bottom"
               style={{
-                left: `${Math.random() * 100}%`,
-                top: `-10%`,
-                animation: `confettiFall ${2 + Math.random()}s linear forwards`,
-                animationDelay: `${Math.random() * 0.5}s`,
-                opacity: 0.8
+                transform: `rotate(${i * 30}deg)`,
+                animation: 'radial-burst 1s ease-out forwards',
+                animationDelay: `${i * 0.05}s`,
+                opacity: 0
               }}
             />
           ))}
         </div>
       )}
 
+      {/* Enhanced confetti */}
+      {showConfetti && (
+        <div className="absolute inset-0 pointer-events-none">
+          {[...Array(40)].map((_, i) => {
+            const colors = ['var(--accent)', 'var(--primary)', 'var(--success)', 'var(--accent-cardio)'];
+            return (
+              <div
+                key={i}
+                className="absolute w-2 h-2 rounded-full animate-fade-in"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: `-10%`,
+                  backgroundColor: colors[Math.floor(Math.random() * colors.length)],
+                  animation: `confettiFall ${2 + Math.random()}s linear forwards`,
+                  animationDelay: `${Math.random() * 0.5}s`,
+                  opacity: 0.9
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+
       <style>{`
         @keyframes confettiFall {
           to {
-            transform: translateY(120vh) rotate(360deg);
+            transform: translateY(120vh) rotate(${360 + Math.random() * 360}deg);
             opacity: 0;
           }
         }
       `}</style>
 
-      {/* Header */}
-      <div className="text-center mb-10">
-        <div className="w-24 h-24 bg-[var(--accent)] rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse-subtle" style={{ boxShadow: 'var(--glow-red)' }}>
-          <TrophyIcon className="w-14 h-14 text-white" />
+      {/* Trophy with multiple halos */}
+      <div className="relative z-10 mb-8 mt-4">
+        <div className="relative w-32 h-32 mx-auto">
+          {/* Outer halo */}
+          <div className="absolute inset-0 rounded-full bg-[var(--accent)] opacity-20 blur-2xl animate-pulse"></div>
+          {/* Middle halo */}
+          <div className="absolute inset-4 rounded-full bg-[var(--primary)] opacity-30 blur-xl animate-pulse" style={{ animationDelay: '0.5s' }}></div>
+          {/* Trophy container */}
+          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] flex items-center justify-center shadow-2xl animate-scale-in">
+            <TrophyIcon className="w-20 h-20 text-white animate-bounce-subtle" />
+          </div>
         </div>
-        <h1 className="font-syne text-4xl font-bold text-[var(--text-primary)] mb-3">
-          Workout Complete!
+      </div>
+
+      {/* Animated title */}
+      <div className="relative z-10 text-center mb-6">
+        <h1 className="text-4xl sm:text-5xl font-black text-[var(--text-primary)] mb-2">
+          <span className="inline-block animate-fade-in-up" style={{ animationDelay: '0ms' }}>
+            Workout
+          </span>
+          {' '}
+          <span className="inline-block animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+            Complete!
+          </span>
         </h1>
-        <p className="text-[16px] text-[var(--text-secondary)]">
-          You crushed it! 🔥
+        <p className="text-[15px] text-[var(--text-secondary)] font-medium animate-fade-in" style={{ animationDelay: '200ms' }}>
+          {t('victory.congratulations')}
         </p>
       </div>
 
       {/* Session Title */}
-      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 mb-6" style={{ boxShadow: 'var(--shadow-sm)' }}>
-        <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-2">
-          SESSION
+      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 mb-4 shadow-card">
+        <p className="text-[9px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1">
+          {t('victory.session').toUpperCase()}
         </p>
-        <h2 className="font-syne text-2xl font-bold text-[var(--text-primary)]">
+        <h2 className="text-base font-bold text-[var(--text-primary)]">
           {sessionLog.focus}
         </h2>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 gap-4 mb-8">
+      {/* Stats Grid - Enhanced with icons and gradients */}
+      <div className="relative z-10 grid grid-cols-2 gap-4 mb-8">
         {revealed[0] && (
-          <div className="bg-[var(--surface)] border border-[var(--accent)] rounded-xl p-5 animate-fade-in-up" style={{ boxShadow: 'var(--glow-red)' }}>
-            <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-2">TIME</p>
-            <p className="font-syne text-3xl font-bold text-[var(--accent)]">{durationCount}</p>
-            <p className="text-[12px] text-[var(--text-secondary)]">minutes</p>
+          <div className="group bg-gradient-to-br from-[var(--accent-light)] to-[var(--accent)]/10 border-2 border-[var(--accent)] rounded-2xl p-5 animate-scale-in shadow-lg hover:shadow-xl transition-all">
+            <TimerIcon className="w-7 h-7 text-[var(--accent)] mb-3" />
+            <p className="text-[10px] uppercase tracking-widest text-[var(--accent)] font-bold mb-1.5">
+              {t('victory.time')}
+            </p>
+            <p className="text-4xl font-black text-[var(--accent)] stat-number mb-1">
+              {durationCount}
+            </p>
+            <p className="text-[12px] text-[var(--text-secondary)] font-semibold">
+              {t('victory.minutes')}
+            </p>
           </div>
         )}
 
         {revealed[1] && (
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 animate-fade-in-up" style={{ boxShadow: 'var(--shadow-sm)', animationDelay: '100ms' }}>
-            <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-2">VOLUME</p>
-            <p className="font-syne text-3xl font-bold text-[var(--text-primary)]">{volumeCount.toLocaleString()}</p>
-            <p className="text-[12px] text-[var(--text-secondary)]">lbs lifted</p>
+          <div className="bg-[var(--surface)] border border-[var(--border-card)] rounded-2xl p-5 animate-scale-in shadow-float hover:shadow-elevated transition-all" style={{ animationDelay: '100ms' }}>
+            <DumbbellIcon className="w-7 h-7 text-[var(--primary)] mb-3" />
+            <p className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-bold mb-1.5">
+              {t('victory.volume')}
+            </p>
+            <p className="text-4xl font-black text-[var(--text-primary)] stat-number mb-1">
+              {volumeCount.toLocaleString()}
+            </p>
+            <p className="text-[12px] text-[var(--text-secondary)] font-semibold">
+              {t('victory.lbsLifted')}
+            </p>
           </div>
         )}
 
         {revealed[2] && (
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 animate-fade-in-up" style={{ boxShadow: 'var(--shadow-sm)', animationDelay: '200ms' }}>
-            <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-2">EXERCISES</p>
-            <p className="font-syne text-3xl font-bold text-[var(--text-primary)]">{exerciseCount}</p>
-            <p className="text-[12px] text-[var(--text-secondary)]">completed</p>
+          <div className="bg-[var(--surface)] border border-[var(--border-card)] rounded-2xl p-5 animate-scale-in shadow-float hover:shadow-elevated transition-all" style={{ animationDelay: '200ms' }}>
+            <CheckCircleIcon className="w-7 h-7 text-[var(--success)] mb-3" />
+            <p className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-bold mb-1.5">
+              {t('victory.exercises')}
+            </p>
+            <p className="text-4xl font-black text-[var(--text-primary)] stat-number mb-1">
+              {exerciseCount}
+            </p>
+            <p className="text-[12px] text-[var(--text-secondary)] font-semibold">
+              {t('victory.completed')}
+            </p>
           </div>
         )}
 
         {revealed[3] && (
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 animate-fade-in-up" style={{ boxShadow: 'var(--shadow-sm)', animationDelay: '300ms' }}>
-            <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-2">SETS</p>
-            <p className="font-syne text-3xl font-bold text-[var(--text-primary)]">{setsCount}</p>
-            <p className="text-[12px] text-[var(--text-secondary)]">total</p>
+          <div className="bg-[var(--surface)] border border-[var(--border-card)] rounded-2xl p-5 animate-scale-in shadow-float hover:shadow-elevated transition-all" style={{ animationDelay: '300ms' }}>
+            <RepeatIcon className="w-7 h-7 text-[var(--primary)] mb-3" />
+            <p className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-bold mb-1.5">
+              {t('victory.sets')}
+            </p>
+            <p className="text-4xl font-black text-[var(--text-primary)] stat-number mb-1">
+              {setsCount}
+            </p>
+            <p className="text-[12px] text-[var(--text-secondary)] font-semibold">
+              {t('victory.total')}
+            </p>
           </div>
         )}
       </div>
 
-      {/* Action Buttons */}
-      <div className="mt-auto space-y-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-        <button
+      {/* Action Buttons - Enhanced */}
+      <div className="relative z-10 mt-auto space-y-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <Button
           onClick={handleShare}
-          className="w-full py-4 rounded-lg font-semibold text-[15px] text-[var(--text-primary)] bg-[var(--surface)] border-2 border-[var(--border-strong)] hover:bg-[var(--surface-secondary)] transition"
+          variant="soft"
+          className="w-full h-14 text-[15px] shadow-md"
         >
-          Share Progress
-        </button>
-        <button
+          <SparklesIcon className="w-5 h-5" />
+          {t('victory.share')}
+        </Button>
+        <Button
           onClick={onDone}
-          className="w-full py-5 rounded-xl font-bold text-[18px] text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] active:scale-[0.98] transition-all"
-          style={{ boxShadow: 'var(--glow-red)' }}
+          variant="accent"
+          className="w-full h-14 text-[16px] font-bold"
         >
-          Done
-        </button>
+          {t('victory.done')}
+        </Button>
       </div>
     </div>
   );

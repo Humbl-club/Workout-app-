@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PlanDay, DailyRoutine, WorkoutLog } from '../types';
 import { CheckCircleIcon, XMarkIcon, CogIcon, ChartBarIcon, TimerIcon } from './icons';
 import { usePulse, useHaptic } from '../hooks/useAnimations';
@@ -16,6 +17,7 @@ interface EquipmentItem {
 }
 
 export default function PreWorkoutScreen({ session, recentLogs, onStart, onCancel }: PreWorkoutScreenProps) {
+  const { t } = useTranslation();
   const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
   const [allChecked, setAllChecked] = useState(false);
   const pulse = usePulse(3000); // Breathing circle pulse
@@ -127,11 +129,11 @@ export default function PreWorkoutScreen({ session, recentLogs, onStart, onCance
     <div className="min-h-screen w-full max-w-2xl mx-auto px-5 sm:px-6 pt-6 pb-[calc(2rem+env(safe-area-inset-bottom))] flex flex-col animate-fade-in">
       {/* Header */}
       <div className="flex justify-between items-center mb-10">
-        <h1 className="font-syne text-2xl sm:text-3xl font-bold text-[var(--text-primary)]">Prepare to Train</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-[var(--text-primary)]">{t('workout.prepareToStart')}</h1>
         <button
           onClick={onCancel}
           className="p-2.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] transition-all min-h-[44px] min-w-[44px]"
-          aria-label="Cancel"
+          aria-label={t('common.cancel')}
         >
           <XMarkIcon className="w-6 h-6" />
         </button>
@@ -144,19 +146,19 @@ export default function PreWorkoutScreen({ session, recentLogs, onStart, onCance
           style={{
             transform: `scale(${breathingScale})`,
             background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))',
-            boxShadow: 'var(--glow-cyan)'
+            boxShadow: 'var(--shadow-lg)'
           }}
         >
           <div className="w-36 h-36 rounded-full bg-[var(--background)]/40 backdrop-blur-sm flex items-center justify-center">
             <TimerIcon className="w-14 h-14 text-white" />
           </div>
         </div>
-        <p className="mt-5 text-sm text-[var(--text-secondary)] font-medium">Take a moment to prepare</p>
+        <p className="mt-5 text-sm text-[var(--text-secondary)] font-medium">{t('workout.takeMomentToPrepare')}</p>
       </div>
 
       {/* Workout Overview */}
       <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 sm:p-6 mb-4" style={{ boxShadow: 'var(--shadow-sm)' }}>
-        <h2 className="font-syne text-lg font-bold text-[var(--text-primary)] mb-2">{session.focus}</h2>
+        <h2 className="text-lg font-bold text-[var(--text-primary)] mb-2">{session.focus}</h2>
         <div className="flex items-center flex-wrap gap-3 text-[13px] text-[var(--text-secondary)]">
           <span className="flex items-center gap-1.5">⏱️ ~45 min</span>
           <span>•</span>
@@ -169,8 +171,8 @@ export default function PreWorkoutScreen({ session, recentLogs, onStart, onCance
       {/* Equipment Checklist */}
       {equipment.length > 0 && (
         <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 sm:p-6 mb-4" style={{ boxShadow: 'var(--shadow-sm)' }}>
-          <h3 className="font-semibold text-base text-[var(--text-primary)] mb-1">Equipment Checklist</h3>
-          <p className="text-[12px] text-[var(--text-tertiary)] mb-4">Optional - just a helpful reminder</p>
+          <h3 className="font-semibold text-base text-[var(--text-primary)] mb-1">{t('workout.equipmentChecklist')}</h3>
+          <p className="text-[12px] text-[var(--text-tertiary)] mb-4">{t('workout.equipmentOptional')}</p>
           <div className="space-y-2">
             {equipment.map((item, index) => (
               <button
@@ -200,19 +202,19 @@ export default function PreWorkoutScreen({ session, recentLogs, onStart, onCance
       <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6 mb-5" style={{ boxShadow: 'var(--shadow-sm)' }}>
         <div className="flex items-center gap-2 mb-4">
           <CogIcon className="w-5 h-5 text-[var(--text-tertiary)]" />
-          <h3 className="font-semibold text-base text-[var(--text-primary)]">Session Settings</h3>
+          <h3 className="font-semibold text-base text-[var(--text-primary)]">{t('workout.sessionSettings')}</h3>
         </div>
         <div className="space-y-3 text-sm text-[var(--text-secondary)]">
           <div className="flex items-center justify-between">
-            <span>Rest timer: Auto-start</span>
+            <span>{t('workout.restTimerAutoStart')}</span>
             <span className="text-[var(--success)]">✓</span>
           </div>
           <div className="flex items-center justify-between">
-            <span>Audio cues</span>
+            <span>{t('workout.audioCues')}</span>
             <span className="text-[var(--success)]">✓</span>
           </div>
           <div className="flex items-center justify-between">
-            <span>Vibration feedback</span>
+            <span>{t('workout.vibrationFeedback')}</span>
             <span className="text-[var(--success)]">✓</span>
           </div>
         </div>
@@ -220,15 +222,15 @@ export default function PreWorkoutScreen({ session, recentLogs, onStart, onCance
 
       {/* Last Session Stats */}
       {lastStats && (
-        <div className="bg-[var(--accent-light)] border border-[var(--accent)] rounded-xl p-6 mb-5" style={{ boxShadow: 'var(--glow-cyan)' }}>
+        <div className="bg-[var(--accent-light)] border border-[var(--accent)] rounded-xl p-6 mb-5 shadow-card">
           <div className="flex items-center gap-2 mb-3">
             <ChartBarIcon className="w-5 h-5 text-[var(--accent)]" />
-            <h3 className="font-semibold text-base text-[var(--text-primary)]">Last Session</h3>
+            <h3 className="font-semibold text-base text-[var(--text-primary)]">{t('workout.lastSession')}</h3>
           </div>
           <p className="text-sm text-[var(--text-secondary)] mb-3">
-            {lastStats.duration} min • {Math.round(lastStats.volume).toLocaleString()} kg total volume
+            {lastStats.duration} {t('workout.min')} • {Math.round(lastStats.volume).toLocaleString()} {t('workout.kgTotalVolume')}
           </p>
-          <p className="text-sm font-semibold text-[var(--accent)]">Try to beat it today!</p>
+          <p className="text-sm font-semibold text-[var(--accent)]">{t('workout.tryToBeatIt')}</p>
         </div>
       )}
 
@@ -239,16 +241,15 @@ export default function PreWorkoutScreen({ session, recentLogs, onStart, onCance
             haptic.heavy();
             onStart();
           }}
-          className="w-full py-4 rounded-lg font-semibold text-[15px] transition-all min-h-[60px] active:scale-[0.98] text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)]"
-          style={{ boxShadow: 'var(--glow-red)' }}
+          className="w-full py-4 rounded-lg font-semibold text-[15px] transition-all min-h-[60px] active:scale-[0.98] text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] shadow-card"
         >
-          Start Workout
+          {t('workout.startWorkout')}
         </button>
         <button
           onClick={onCancel}
           className="w-full py-4 rounded-lg font-semibold text-[15px] text-[var(--text-secondary)] bg-[var(--surface-secondary)] hover:bg-[var(--surface-hover)] active:bg-[var(--surface-hover)] transition-all min-h-[60px]"
         >
-          Maybe Later
+          {t('workout.maybeLater')}
         </button>
       </div>
     </div>

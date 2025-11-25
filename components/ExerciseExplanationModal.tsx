@@ -66,7 +66,7 @@ export default function ExerciseExplanationModal({
               <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-semibold mb-1">
                 EXERCISE INFO
               </p>
-              <h3 className="font-syne text-xl font-bold text-[var(--text-primary)] leading-tight">
+              <h3 className="text-xl font-bold text-[var(--text-primary)] leading-tight">
                 {exerciseName}
               </h3>
             </div>
@@ -134,8 +134,7 @@ export default function ExerciseExplanationModal({
 
                 <button
                   onClick={onClose}
-                  className="w-full py-3 rounded-lg font-semibold text-[14px] text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] transition-all active:scale-95"
-                  style={{ boxShadow: 'var(--glow-red)' }}
+                  className="w-full py-3 rounded-lg font-semibold text-[14px] text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] transition-all active:scale-95 shadow-card"
                 >
                   Got it
                 </button>

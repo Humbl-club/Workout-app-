@@ -1,0 +1,124 @@
+{
+  "relationships": [
+    {
+      "primary_exercise": "push_up",
+      "related_exercise": "diamond_push_up",
+      "relationship_type": "progression",
+      "strength_difference": 20,
+      "similarity_score": 85,
+      "notes": "Diamond push-ups increase tricep activation and difficulty"
+    },
+    {
+      "primary_exercise": "push_up",
+      "related_exercise": "incline_push_up",
+      "relationship_type": "regression",
+      "strength_difference": -30,
+      "similarity_score": 90,
+      "notes": "Incline reduces body weight load, making it easier for beginners"
+    },
+    {
+      "primary_exercise": "barbell_back_squat",
+      "related_exercise": "goblet_squat",
+      "relationship_type": "regression", 
+      "strength_difference": -40,
+      "similarity_score": 80,
+      "notes": "Goblet squat teaches squat pattern with less load and complexity"
+    },
+    {
+      "primary_exercise": "barbell_back_squat",
+      "related_exercise": "front_squat",
+      "relationship_type": "alternative",
+      "strength_difference": -15,
+      "similarity_score": 75,
+      "notes": "Front squat emphasizes quads more and requires better mobility"
+    },
+    {
+      "primary_exercise": "pull_up",
+      "related_exercise": "chin_up",
+      "relationship_type": "alternative",
+      "strength_difference": -10,
+      "similarity_score": 85,
+      "notes": "Chin-up uses supinated grip, increasing bicep involvement"
+    },
+    {
+      "primary_exercise": "pull_up",
+      "related_exercise": "lat_pulldown",
+      "relationship_type": "regression",
+      "strength_difference": -35,
+      "similarity_score": 70,
+      "notes": "Lat pulldown allows for load adjustment and learning the movement pattern"
+    },
+    {
+      "primary_exercise": "deadlift",
+      "related_exercise": "romanian_deadlift",
+      "relationship_type": "alternative",
+      "strength_difference": -20,
+      "similarity_score": 80,
+      "notes": "Romanian deadlift emphasizes hamstrings and teaches hip hinge"
+    },
+    {
+      "primary_exercise": "deadlift",
+      "related_exercise": "trap_bar_deadlift",
+      "relationship_type": "alternative",
+      "strength_difference": -10,
+      "similarity_score": 85,
+      "notes": "Trap bar allows for more upright position, reducing back stress"
+    },
+    {
+      "primary_exercise": "overhead_press",
+      "related_exercise": "seated_shoulder_press",
+      "relationship_type": "regression",
+      "strength_difference": -25,
+      "similarity_score": 75,
+      "notes": "Seated version provides stability support and removes core demand"
+    },
+    {
+      "primary_exercise": "overhead_press",
+      "related_exercise": "landmine_press",
+      "relationship_type": "alternative",
+      "strength_difference": -15,
+      "similarity_score": 60,
+      "notes": "Landmine press is shoulder-friendly and allows for pressing at an angle"
+    },
+    {
+      "primary_exercise": "barbell_back_squat",
+      "related_exercise": "leg_press",
+      "relationship_type": "compound_to_isolation",
+      "strength_difference": -30,
+      "similarity_score": 65,
+      "notes": "Leg press isolates leg muscles while removing balance and core demands"
+    },
+    {
+      "primary_exercise": "bent_over_row",
+      "related_exercise": "chest_supported_row",
+      "relationship_type": "alternative",
+      "strength_difference": -20,
+      "similarity_score": 80,
+      "notes": "Chest support removes lower back demand and allows focus on pulling muscles"
+    },
+    {
+      "primary_exercise": "walking_lunges",
+      "related_exercise": "stationary_lunges",
+      "relationship_type": "regression",
+      "strength_difference": -15,
+      "similarity_score": 90,
+      "notes": "Stationary lunges are easier to balance and control"
+    },
+    {
+      "primary_exercise": "hip_thrust",
+      "related_exercise": "glute_bridge",
+      "relationship_type": "regression",
+      "strength_difference": -25,
+      "similarity_score": 85,
+      "notes": "Glute bridges teach the movement pattern without external load"
+    },
+    {
+      "primary_exercise": "bulgarian_split_squat",
+      "related_exercise": "reverse_lunge",
+      "relationship_type": "alternative",
+      "strength_difference": -10,
+      "similarity_score": 75,
+      "notes": "Reverse lunge is a single-leg movement with less balance challenge"
+    }
+  ]
+}

@@ -1,6 +1,9 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { PlanExercise, LoggedSetSRW, LoggedSetDuration } from '../types';
 import { CheckCircleIcon, ClockIcon, RepeatIcon, ZapIcon, PercentIcon, TrendingUpIcon, SpeedometerIcon, CogIcon } from './icons';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { cn } from '../lib/utils';
 
 interface ExerciseCardProps {
   exercise: PlanExercise;
@@ -31,6 +34,7 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({
     completedSets = [],
     isInputsComplete = false
 }) => {
+  const { t } = useTranslation();
   const { metrics_template: mt, rpe } = exercise;
   const totalSets = mt?.target_sets || 1;
   const isCompleteForSession = completedSets.length >= totalSets;
@@ -48,7 +52,7 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({
           return (
             <div className="text-center py-8">
                 <CheckCircleIcon className="w-12 h-12 text-green-500 mx-auto"/>
-                <p className="mt-2 font-semibold text-stone-300">Exercise Complete!</p>
+                <p className="mt-2 font-semibold text-stone-300">{t('exercise.complete')}</p>
             </div>
           )
       }
@@ -67,41 +71,43 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({
   }
 
   return (
-    <div className={`bg-stone-800/50 border border-stone-700 rounded-3xl backdrop-blur-lg shadow-2xl p-6 flex-1 flex flex-col justify-between`}>
+    <Card className={cn("bg-stone-800/50 border-stone-700 rounded-3xl backdrop-blur-lg shadow-2xl p-6 flex-1 flex flex-col justify-between")}>
         <div className="space-y-4">
-            <div className="flex items-center gap-2">
-                {mode === 'superset-member' && isInputsComplete && <CheckCircleIcon className="w-5 h-5 text-green-500 shrink-0"/>}
-                <h3 className="font-syne text-2xl font-bold text-white tracking-tight">{exercise.exercise_name}</h3>
-            </div>
+            <CardHeader className="p-0">
+                <div className="flex items-center gap-2">
+                    {mode === 'superset-member' && isInputsComplete && <CheckCircleIcon className="w-5 h-5 text-green-500 shrink-0"/>}
+                    <CardTitle className="text-2xl font-bold text-white tracking-tight">{exercise.exercise_name}</CardTitle>
+                </div>
+            </CardHeader>
             
             <div>
-                <SectionHeader title="Targets" />
+                <SectionHeader title={t('exercise.targets')} />
                 <div className="flex items-center gap-2 mt-2 overflow-x-auto pb-2 -mb-2 hide-scrollbar">
-                    <InfoChip icon={RepeatIcon} label="Sets & Reps" value={getSetsRepsValue()} />
-                    <InfoChip icon={ClockIcon} label="Rest" value={mt?.rest_period_s ? `${mt.rest_period_s}s` : null} />
-                    <InfoChip icon={PercentIcon} label="1RM %" value={mt?.one_rep_max_percentage} />
-                    <InfoChip icon={ZapIcon} label="RPE" value={rpe} />
-                    <InfoChip icon={TrendingUpIcon} label="Incline" value={mt?.incline} />
-                    <InfoChip icon={SpeedometerIcon} label="Speed" value={mt?.speed} />
-                    <InfoChip icon={CogIcon} label="Resistance" value={mt?.resistance} />
+                    <InfoChip icon={RepeatIcon} label={t('exercise.setsAndReps')} value={getSetsRepsValue()} />
+                    <InfoChip icon={ClockIcon} label={t('exercise.rest')} value={mt?.rest_period_s ? `${mt.rest_period_s}s` : null} />
+                    <InfoChip icon={PercentIcon} label={t('exercise.oneRepMax')} value={mt?.one_rep_max_percentage} />
+                    <InfoChip icon={ZapIcon} label={t('exercise.rpe')} value={rpe} />
+                    <InfoChip icon={TrendingUpIcon} label={t('exercise.incline')} value={mt?.incline} />
+                    <InfoChip icon={SpeedometerIcon} label={t('exercise.speed')} value={mt?.speed} />
+                    <InfoChip icon={CogIcon} label={t('exercise.resistance')} value={mt?.resistance} />
                 </div>
             </div>
 
             <div>
-                 <SectionHeader title="Log Your Set" />
+                 <SectionHeader title={t('exercise.logSet')} />
                  {renderContent()}
             </div>
 
             {completedSets.length > 0 && (
                  <div>
-                    <SectionHeader title="Completed Sets" />
+                    <SectionHeader title={t('exercise.completedSets')} />
                     <div className="flex flex-wrap gap-2 mt-2">
                         {completedSets.map((set, index) => (
                              <div key={index} className="flex items-center gap-2 bg-stone-900/50 px-3 py-1.5 rounded-full border border-stone-700">
                                 <CheckCircleIcon className="w-4 h-4 text-green-500"/>
-                                <span className="text-sm font-semibold text-stone-300">Set {set.set}:</span>
+                                <span className="text-sm font-semibold text-stone-300">{t('exercise.setNumber', { number: set.set })}</span>
                                 <span className="text-sm text-stone-200 font-mono font-semibold">
-                                     {'weight' in set ? `${set.weight}kg × ${set.reps}r ${set.rpe ? `@${set.rpe}` : ''}` : `${set.duration_s}s`}
+                                     {'weight' in set ? t('exercise.weightReps', { weight: set.weight, reps: set.reps }) + (set.rpe ? ` @${set.rpe}` : '') : `${set.duration_s}s`}
                                 </span>
                             </div>
                         ))}
@@ -112,11 +118,11 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({
         </div>
         
         {exercise.notes && (
-            <div className="text-center text-xs text-stone-500 mt-4 pt-4 border-t border-stone-800">
+            <CardContent className="text-center text-xs text-stone-500 mt-4 pt-4 border-t border-stone-800 p-0">
                 {exercise.notes}
-            </div>
+            </CardContent>
         )}
-    </div>
+    </Card>
   );
 };
 

@@ -1,9 +1,15 @@
 import React, { useState, useEffect, useRef, FormEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChatMessage, WorkoutPlan, PlanExercise, PlanDay, WorkoutBlock } from '../types';
-import { initializeChatSession, simpleGenerate } from '../services/geminiService';
+import { initializeChatSession, simpleGenerate, isWorkoutRelated } from '../services/geminiService';
 import { XMarkIcon, SendIcon, SparklesIcon, LogoIcon, XCircleIcon } from './icons';
 import { Chat, Part } from '@google/genai';
 import { notify } from './layout/Toast';
+import { useMutation } from 'convex/react';
+import { api } from '../convex/_generated/api';
+import { useUser } from '@clerk/clerk-react';
+import { hasExceededLimit, getLimitMessage, getRemainingUsage } from '../lib/rateLimiter';
+import useUserProfile from '../hooks/useUserProfile';
 
 interface ChatbotProps {
   isOpen: boolean;
@@ -15,6 +21,10 @@ interface ChatbotProps {
 }
 
 export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMessage, dayOfWeek }: ChatbotProps) {
+  const { t } = useTranslation();
+  const { user } = useUser();
+  const { userProfile } = useUserProfile();
+  const incrementChatUsageMutation = useMutation(api.mutations.incrementChatUsage);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -24,8 +34,6 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
   const inputRef = useRef<HTMLInputElement>(null);
   const initialMessageSet = useRef(false);
   const [sessionReady, setSessionReady] = useState(false);
-  const [showKeyInput, setShowKeyInput] = useState(false);
-  const [apiKeyDraft, setApiKeyDraft] = useState('');
 
 
   useEffect(() => {
@@ -36,7 +44,7 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
           setSessionReady(true);
           if (messages.length === 0) {
             setMessages([
-              { role: 'model', text: 'Hello! I am your REBLD fitness assistant. How can I help you adapt your plan today?' }
+              { role: 'model', text: t('chat.hello') }
             ]);
           }
         } catch (e: any) {
@@ -44,7 +52,7 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
           setSessionReady(false);
           if (messages.length === 0) {
             setMessages([
-              { role: 'model', text: 'AI chat is in basic mode. I can still answer questions, but plan-editing features may be limited.' }
+              { role: 'model', text: t('chat.hello') }
             ]);
           }
         }
@@ -96,13 +104,13 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
 
             if (substituted) {
               onPlanUpdate(updatedPlan);
-              notify({ type: 'success', message: `Replaced ${original_exercise_name} with ${new_exercise_name}` });
-              functionResponseText = `OK. I've substituted ${original_exercise_name} with ${new_exercise_name}.`;
+              notify({ type: 'success', message: t('chat.exerciseReplaced', { original: original_exercise_name, new: new_exercise_name }) });
+              functionResponseText = t('chat.exerciseSubstituted', { original: original_exercise_name, new: new_exercise_name });
             } else {
-              functionResponseText = `Error: I couldn't find the exercise ${original_exercise_name} to substitute.`;
+              functionResponseText = t('chat.exerciseNotFound', { exercise: original_exercise_name });
             }
         } else {
-            functionResponseText = `Error: I couldn't find day ${day_of_week} in the plan.`;
+            functionResponseText = t('chat.dayNotFound', { day: day_of_week });
         }
     } else if (functionCall.name === 'addExercise' && updatedPlan) {
         const { day_of_week, category, new_exercise_name, new_exercise_metrics_template, rpe } = functionCall.args;
@@ -146,13 +154,13 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
             dayToUpdate.blocks = blocks;
 
             onPlanUpdate(updatedPlan);
-            notify({ type: 'success', message: `Added ${new_exercise_name} to day ${day_of_week}` });
-            functionResponseText = `OK. I've added ${new_exercise_name} to your plan.`;
+            notify({ type: 'success', message: t('chat.exerciseAdded', { exercise: new_exercise_name, day: day_of_week }) });
+            functionResponseText = t('chat.exerciseAddedMessage', { exercise: new_exercise_name });
         } else {
-            functionResponseText = `Error: I couldn't find day ${day_of_week} in the plan.`;
+            functionResponseText = t('chat.dayNotFound', { day: day_of_week });
         }
     } else {
-        functionResponseText = "Function call could not be processed as the plan is not available.";
+        functionResponseText = t('chat.planNotAvailable');
     }
 
     return {
@@ -166,6 +174,21 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
+
+    // Check rate limits
+    if (user?.id && userProfile) {
+      const tier = userProfile.apiUsage?.tier || 'free';
+      const usage = userProfile.apiUsage;
+
+      if (usage && hasExceededLimit(usage, tier, 'chat')) {
+        const remaining = getRemainingUsage(usage, tier);
+        setError(getLimitMessage('chat', tier, remaining));
+        return;
+      }
+    }
+
+    // Removed strict validation - let AI handle topic filtering via system instruction
+    // The AI's system prompt already enforces workout-only conversations
 
     const userMessage: ChatMessage = { role: 'user', text: input };
     setMessages(prev => [...prev, userMessage]);
@@ -204,7 +227,7 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
         if (functionCall) {
           const functionResponsePart = handleFunctionCall(functionCall);
           const secondResult = await chatRef.current.sendMessageStream({ message: [functionResponsePart] });
-          
+
           let finalModelResponse = '';
           setMessages(prev => [...prev, { role: 'model', text: '' }]);
 
@@ -219,15 +242,25 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
             }
           }
         }
+
+        // Track chat message for rate limiting
+        if (user?.id) {
+          await incrementChatUsageMutation({ userId: user.id });
+        }
       } else {
         // No session available; use simple generate
-        const fallback = await simpleGenerate(currentInput, 'You are a concise, helpful fitness assistant.');
+        const fallback = await simpleGenerate(currentInput, t('chat.fallbackPrompt'));
         setMessages(prev => [...prev, { role: 'model', text: fallback }]);
+
+        // Track chat message for rate limiting
+        if (user?.id) {
+          await incrementChatUsageMutation({ userId: user.id });
+        }
       }
     } catch (err) {
       const e = err as Error;
       console.error("Chatbot error:", e);
-      const errorMessage = e.message || 'An unexpected error occurred.';
+      const errorMessage = e.message || t('errors.unknownError');
       setError(errorMessage);
       setMessages(prev => {
           if(prev.length > 0 && prev[prev.length -1].role === 'model' && prev[prev.length -1].text === '') {
@@ -235,7 +268,7 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
           }
           return prev;
       });
-      setMessages(prev => [...prev, { role: 'model', text: `Sorry, something went wrong: ${errorMessage}` }]);
+      setMessages(prev => [...prev, { role: 'model', text: t('chat.errorMessage', { error: errorMessage }) }]);
     } finally {
       setIsLoading(false);
     }
@@ -246,100 +279,154 @@ export default function Chatbot({ isOpen, onClose, plan, onPlanUpdate, initialMe
     {isOpen && (
         <div className="fixed inset-0 z-30 flex items-end justify-center sm:items-center">
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
-        <div className="relative z-40 bg-stone-900/70 border border-stone-700 backdrop-blur-xl w-full max-w-lg h-[90vh] sm:h-[70vh] rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col animate-fade-in-up-custom">
-            <header className="flex items-center justify-between p-4 border-b border-stone-800 shrink-0">
+        <div className="relative z-40 bg-[var(--surface)]/95 border border-[var(--border-card)] backdrop-blur-xl w-full max-w-lg h-[90vh] sm:h-[70vh] rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col animate-fade-in-up-custom">
+            <header className="flex items-center justify-between p-4 border-b border-[var(--border)] bg-gradient-to-r from-[var(--primary-light)] to-[var(--accent-light)] shrink-0">
                 <div className="flex items-center gap-3">
-                    <LogoIcon className="text-3xl" />
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center shadow-md">
+                      <SparklesIcon className="w-6 h-6 text-white" />
+                    </div>
                     <div>
-                        <h2 className="font-syne text-lg font-bold text-white">REBLD Assistant</h2>
-                        <p className="text-xs text-stone-400">Powered by Gemini Pro</p>
-                        {!sessionReady && (
-                          <button onClick={() => setShowKeyInput(s => !s)} className="text-[11px] text-red-300 underline mt-1">
-                            {showKeyInput ? 'Hide API key input' : 'Set API key'}
-                          </button>
-                        )}
+                        <h2 className="text-lg font-bold text-[var(--text-primary)]">{t('chat.assistantTitle')}</h2>
+                        <p className="text-xs text-[var(--text-secondary)]">{t('chat.poweredBy')}</p>
                     </div>
                 </div>
-                <button onClick={onClose} className="p-1 rounded-full text-stone-400 hover:bg-stone-800 hover:text-white">
+                <button onClick={onClose} className="p-1 rounded-full text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]">
                     <XMarkIcon className="w-6 h-6" />
                 </button>
             </header>
 
+            {messages.length === 1 && (
+              <div className="p-4 border-b border-[var(--border)] bg-[var(--surface-secondary)]/30 shrink-0">
+                <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-3">Quick Actions</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    {
+                      svg: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>,
+                      label: 'Swap Exercise',
+                      prompt: 'Help me swap an exercise'
+                    },
+                    {
+                      svg: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>,
+                      label: 'Add Exercise',
+                      prompt: 'Add an exercise'
+                    },
+                    {
+                      svg: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>,
+                      label: 'Get Tips',
+                      prompt: 'Give me tips'
+                    },
+                    {
+                      svg: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>,
+                      label: 'Adjust Plan',
+                      prompt: 'Adjust my plan'
+                    },
+                  ].map((action, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setInput(action.prompt);
+                        inputRef.current?.focus();
+                      }}
+                      className="p-3.5 bg-[var(--surface)] border-2 border-[var(--border)] rounded-xl hover:border-[var(--primary)] hover:bg-[var(--primary-light)] transition-all text-left group active:scale-95"
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[var(--primary-light)] to-[var(--accent-light)] flex items-center justify-center mb-2 text-[var(--primary)] group-hover:scale-110 transition-transform">
+                        {action.svg}
+                      </div>
+                      <p className="text-[13px] font-bold text-[var(--text-primary)]">{action.label}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {showKeyInput && (
-                  <div className="bg-stone-900/60 border border-stone-700 p-3 rounded-lg">
-                    <p className="text-xs text-stone-300 mb-2">Paste your Gemini API key. It will be stored locally in this browser.</p>
-                    <div className="flex gap-2">
-                      <input
-                        type="password"
-                        value={apiKeyDraft}
-                        onChange={(e) => setApiKeyDraft(e.target.value)}
-                        placeholder="GEMINI_API_KEY"
-                        className="flex-1 px-3 py-2 text-sm bg-stone-800/70 border border-stone-700 rounded-md text-stone-100"
-                      />
-                      <button
-                        onClick={() => {
-                          try {
-                            localStorage.setItem('GEMINI_API_KEY', apiKeyDraft.trim());
-                            setApiKeyDraft('');
-                            setShowKeyInput(false);
-                            chatRef.current = null;
-                            setSessionReady(false);
-                            // Re-init on next render
-                            setTimeout(() => {
-                              try { chatRef.current = initializeChatSession(plan!, dayOfWeek); setSessionReady(true); } catch { /* ignore */ }
-                            }, 50);
-                          } catch {}
-                        }}
-                        className="px-4 py-2 text-sm font-semibold rounded-md bg-red-500 text-white"
-                      >Save</button>
-                    </div>
-                  </div>
-                )}
                 {messages.map((msg, index) => (
                     <div key={index} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        {msg.role === 'model' && <div className="w-8 h-8 rounded-full bg-stone-800 flex items-center justify-center shrink-0 border border-stone-700"><SparklesIcon className="w-5 h-5 text-stone-400"/></div>}
-                        <div className={`max-w-xs md:max-w-md p-3 rounded-2xl ${msg.role === 'user' ? 'bg-red-500/80 text-white rounded-br-lg' : 'bg-stone-800 text-stone-200 rounded-bl-lg'}`}>
-                            <p className="text-sm" dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br />') }} />
+                        {msg.role === 'model' && (
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center shrink-0 shadow-sm">
+                            <SparklesIcon className="w-5 h-5 text-white"/>
+                          </div>
+                        )}
+                        <div className={`max-w-xs md:max-w-md p-3.5 rounded-2xl shadow-sm ${
+                          msg.role === 'user'
+                            ? 'bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-white rounded-br-lg'
+                            : 'bg-[var(--surface)] border-2 border-[var(--border)] text-[var(--text-primary)] rounded-bl-lg'
+                        }`}>
+                            <p className="text-[14px] leading-relaxed whitespace-pre-wrap font-medium">{msg.text}</p>
                         </div>
                     </div>
                 ))}
                  {isLoading && (
                     <div className="flex gap-3 justify-start">
-                        <div className="w-8 h-8 rounded-full bg-stone-800 flex items-center justify-center shrink-0 border border-stone-700"><SparklesIcon className="w-5 h-5 text-stone-400"/></div>
-                        <div className="max-w-xs md:max-w-md p-3 rounded-2xl bg-stone-800 text-stone-200 rounded-bl-lg">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center shrink-0 shadow-sm">
+                          <SparklesIcon className="w-5 h-5 text-white"/>
+                        </div>
+                        <div className="max-w-xs md:max-w-md p-3.5 rounded-2xl bg-[var(--surface)] border-2 border-[var(--border)] text-[var(--text-primary)] rounded-bl-lg shadow-sm">
                             <div className="flex items-center space-x-1">
-                                <span className="h-2 w-2 bg-stone-500 rounded-full animate-pulse [animation-delay:-0.3s]"></span>
-                                <span className="h-2 w-2 bg-stone-500 rounded-full animate-pulse [animation-delay:-0.15s]"></span>
-                                <span className="h-2 w-2 bg-stone-500 rounded-full animate-pulse"></span>
+                                <span className="h-2.5 w-2.5 bg-[var(--primary)] rounded-full animate-pulse [animation-delay:-0.3s]"></span>
+                                <span className="h-2.5 w-2.5 bg-[var(--primary)] rounded-full animate-pulse [animation-delay:-0.15s]"></span>
+                                <span className="h-2.5 w-2.5 bg-[var(--primary)] rounded-full animate-pulse"></span>
                             </div>
                         </div>
                     </div>
                  )}
                 <div ref={messagesEndRef} />
             </div>
-            
+
+            {/* Quick Replies - Show when AI asks a question */}
+            {messages.length > 1 &&
+             messages[messages.length - 1].role === 'model' &&
+             (messages[messages.length - 1].text.includes('?') ||
+              messages[messages.length - 1].text.toLowerCase().includes('why')) && (
+              <div className="px-4 pb-2 shrink-0">
+                <p className="text-[10px] text-[var(--text-tertiary)] font-bold uppercase tracking-wider mb-2">
+                  Quick Replies
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    "Because of pain",
+                    "Preference",
+                    "Don't have equipment",
+                    "Too difficult",
+                    "Too easy",
+                    "Want variation"
+                  ].map((reply, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setInput(reply);
+                        inputRef.current?.focus();
+                      }}
+                      className="px-3 py-2 bg-[var(--surface)] border-2 border-[var(--border)] rounded-lg text-[12px] font-bold text-[var(--text-primary)] hover:border-[var(--primary)] hover:bg-[var(--primary-light)] transition-all active:scale-95 shadow-sm"
+                    >
+                      {reply}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {error && (
                 <div className="p-4 pt-0">
-                    <div className="bg-red-500/10 border border-red-500/30 text-red-300 px-4 py-2 rounded-lg flex items-center text-sm" role="alert">
+                    <div className="bg-[var(--error)]/10 border border-[var(--error)]/30 text-[var(--error)] px-4 py-2 rounded-lg flex items-center text-sm" role="alert">
                         <XCircleIcon className="w-5 h-5 mr-2 flex-shrink-0"/>
                         <span>{error}</span>
                     </div>
                 </div>
             )}
 
-            <footer className="p-4 border-t border-stone-800 shrink-0">
+            <footer className="p-4 border-t-2 border-[var(--border)] shrink-0 bg-[var(--surface)]/50">
                 <form onSubmit={handleSubmit} className="flex items-center gap-3">
                     <input
                     ref={inputRef}
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder={plan ? "Ask me about your plan..." : "Loading..."}
+                    placeholder={plan ? t('chat.askAboutPlan') : t('chat.loading')}
                     disabled={isLoading || !plan}
-                    className="w-full px-4 py-2 text-stone-100 bg-stone-800/50 rounded-full border border-stone-700 placeholder-stone-400 focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:outline-none transition disabled:opacity-70"
+                    className="w-full px-4 py-3 text-[14px] font-medium text-[var(--text-primary)] bg-[var(--surface)] rounded-full border-2 border-[var(--border)] placeholder-[var(--text-secondary)] focus:ring-2 focus:ring-[var(--primary)] focus:border-[var(--primary)] focus:outline-none transition disabled:opacity-70 shadow-sm"
                     />
-                    <button type="submit" disabled={isLoading || !input.trim()} className="p-3 bg-red-500 text-white rounded-full shadow-sm hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-stone-900 focus:ring-red-500 disabled:bg-stone-600 disabled:cursor-not-allowed transition">
+                    <button type="submit" disabled={isLoading || !input.trim()} className="p-3 bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-white rounded-full shadow-md hover:shadow-lg hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--surface)] focus:ring-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                         <SendIcon className="w-5 h-5" />
                     </button>
                 </form>

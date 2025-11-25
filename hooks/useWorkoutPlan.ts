@@ -1,134 +1,230 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useMutation } from "convex/react";
+import { useUser } from '@clerk/clerk-react';
+import { api } from "../convex/_generated/api";
 import { WorkoutPlan } from '../types';
-import { db } from '../firebase';
-import { collection, doc, getDoc, setDoc, deleteDoc, addDoc, onSnapshot, query, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { Id } from "../convex/_generated/dataModel";
+import { saveExercisesFromExtractedList } from '../services/exerciseDatabaseService';
+import useUserProfile from './useUserProfile';
 
-export default function useWorkoutPlan(userId: string | undefined | null) {
-    const [allPlans, setAllPlans] = useState<WorkoutPlan[] | null>(null);
-    // FIX: Renamed state setter to avoid conflict with the exported `setActivePlan` function.
-    const [activePlan, _setActivePlan] = useState<WorkoutPlan | null>(null);
-    const [planLoaded, setPlanLoaded] = useState(false);
+export default function useWorkoutPlan() {
+    const { user } = useUser();
+    const userId = user?.id || null;
+    const { userProfile } = useUserProfile();
     
-    useEffect(() => {
-        if (!userId) {
-            setAllPlans(null);
-            _setActivePlan(null);
-            setPlanLoaded(true);
-            return;
-        }
+    const allPlans = useQuery(
+        api.queries.getWorkoutPlans,
+        userId ? { userId } : "skip"
+    );
+    const activePlan = useQuery(
+        api.queries.getActivePlan,
+        userId ? { userId } : "skip"
+    );
+    const createPlanMutation = useMutation(api.mutations.createWorkoutPlan);
+    const updatePlanMutation = useMutation(api.mutations.updateWorkoutPlan);
+    const deletePlanMutation = useMutation(api.mutations.deleteWorkoutPlan);
+    const setActivePlanMutation = useMutation(api.mutations.setActivePlan);
+    const cacheExerciseMutation = useMutation(api.mutations.cacheExerciseExplanation);
+    const updateSportBucketMutation = useMutation(api.sportBucketMutations.updateSportBucket);
+    const incrementPlanUsageMutation = useMutation(api.mutations.incrementPlanUsage);
 
-        setPlanLoaded(false);
-        const plansCollectionRef = collection(db, 'users', userId, 'plans');
-        const q = query(plansCollectionRef, orderBy('createdAt', 'desc'));
-
-        const unsubscribe = onSnapshot(q, async (querySnapshot) => {
-            const fetchedPlans: WorkoutPlan[] = [];
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const createdAt = data.createdAt;
-
-                let createdAtISO: string;
-                if (createdAt && typeof createdAt.toDate === 'function') {
-                    createdAtISO = (createdAt as Timestamp).toDate().toISOString();
-                } else if (createdAt) {
-                    // Handle cases where it might already be an ISO string or a Date object
-                    createdAtISO = new Date(createdAt).toISOString();
-                } else {
-                    // Fallback if createdAt is null/undefined
-                    createdAtISO = new Date().toISOString();
-                }
-
-                fetchedPlans.push({
-                    id: doc.id,
-                    ...data,
-                    createdAt: createdAtISO,
-                } as WorkoutPlan);
-            });
-
-            setAllPlans(fetchedPlans);
-
-            const userDocRef = doc(db, 'users', userId);
-            const userDocSnap = await getDoc(userDocRef);
-            let activePlanId: string | undefined;
-
-            if (userDocSnap.exists()) {
-                activePlanId = userDocSnap.data().activePlanId;
-            }
-
-            if (fetchedPlans.length > 0) {
-                const planToActivate = fetchedPlans.find(p => p.id === activePlanId) || fetchedPlans[0];
-                _setActivePlan(planToActivate);
-                if (planToActivate.id !== activePlanId) {
-                    await setDoc(userDocRef, { activePlanId: planToActivate.id }, { merge: true });
-                }
-            } else {
-                _setActivePlan(null);
-                 if (activePlanId) {
-                    await setDoc(userDocRef, { activePlanId: null }, { merge: true });
-                }
-            }
-
-            setPlanLoaded(true);
-
-        }, (error) => {
-            console.error("Error fetching workout plans:", error);
-            setPlanLoaded(true);
-        });
-
-        return () => unsubscribe();
-    }, [userId]);
-    
-    const setActivePlan = useCallback(async (planId: string) => {
+    const setActivePlan = async (planId: Id<"workoutPlans">) => {
         if (!userId) return;
-        const userDocRef = doc(db, 'users', userId);
+        
         try {
-            await setDoc(userDocRef, { activePlanId: planId }, { merge: true });
-            const newActivePlan = allPlans?.find(p => p.id === planId) || null;
-            _setActivePlan(newActivePlan);
+            await setActivePlanMutation({ userId, planId });
         } catch (error) {
             console.error("Error setting active plan:", error);
         }
-    }, [userId, allPlans]);
+    };
 
-    const addPlan = useCallback(async (newPlanData: Omit<WorkoutPlan, 'id'>) => {
+    // Normalize plan data to ensure it matches Convex schema exactly
+    // This creates a clean structure that matches Convex validators precisely
+    const normalizePlanForConvex = (plan: Omit<WorkoutPlan, 'id' | 'createdAt'>) => {
+        return {
+            name: plan.name,
+            weeklyPlan: plan.weeklyPlan.map(day => ({
+                day_of_week: day.day_of_week,
+                focus: day.focus,
+                notes: day.notes !== undefined && day.notes !== null ? day.notes : null,
+                blocks: day.blocks.map(block => {
+                    // Normalize exercises first
+                    const exercises = block.exercises.map(ex => {
+                        const exercise: any = {
+                            exercise_name: ex.exercise_name,
+                            category: ex.category,
+                            metrics_template: ex.metrics_template,
+                            notes: ex.notes !== undefined && ex.notes !== null ? ex.notes : null,
+                            original_exercise_name: (ex as any).original_exercise_name !== undefined && (ex as any).original_exercise_name !== null 
+                                ? (ex as any).original_exercise_name 
+                                : null,
+                            rpe: (ex as any).rpe !== undefined && (ex as any).rpe !== null ? (ex as any).rpe : null,
+                        };
+                        return exercise;
+                    });
+                    
+                    // Build block based on type
+                    const baseBlock: any = {
+                        type: block.type,
+                        title: (block as any).title !== undefined && (block as any).title !== null ? (block as any).title : null,
+                        exercises: exercises,
+                    };
+                    
+                    // Add type-specific fields
+                    if (block.type === 'superset') {
+                        baseBlock.rounds = (block as any).rounds;
+                    } else if (block.type === 'amrap') {
+                        baseBlock.duration_minutes = (block as any).duration_minutes;
+                    }
+                    
+                    return baseBlock;
+                })
+            })),
+            dailyRoutine: plan.dailyRoutine || null,
+        };
+    };
+
+    const addPlan = async (newPlanData: Omit<WorkoutPlan, 'id' | 'createdAt'>) => {
         if (!userId) return;
         
-        const plansCollectionRef = collection(db, 'users', userId, 'plans');
         try {
-            const planWithTimestamp = {
-                ...newPlanData,
-                createdAt: serverTimestamp()
+            // Normalize the plan to ensure schema compliance - single normalization pass
+            const normalizedPlan = normalizePlanForConvex(newPlanData);
+            
+            // Debug: Log first block structure to verify it matches schema
+            if (normalizedPlan.weeklyPlan[0]?.blocks[0]) {
+                console.log("First block structure:", JSON.stringify(normalizedPlan.weeklyPlan[0].blocks[0], null, 2));
+            }
+            
+            const result = await createPlanMutation({
+                userId,
+                name: normalizedPlan.name,
+                weeklyPlan: normalizedPlan.weeklyPlan as any,
+                dailyRoutine: normalizedPlan.dailyRoutine || undefined,
+            });
+
+            // Track plan generation for rate limiting
+            await incrementPlanUsageMutation({ userId });
+
+            // Extract exercises is now done server-side - use the returned exercises
+            const planId = result.planId;
+            const extractedExercises = result.extractedExercises || [];
+            
+            // After plan is saved, save all exercises to database with explanations
+            // This builds the exercise database over time
+            // Run in background (don't block plan creation)
+            const planWithId: WorkoutPlan = {
+                ...normalizedPlan,
+                id: planId,
+                createdAt: new Date().toISOString(),
             };
-            const newDocRef = await addDoc(plansCollectionRef, planWithTimestamp);
-            await setActivePlan(newDocRef.id);
+            
+            // Save exercises asynchronously using server-extracted list (FASTER - no client-side extraction)
+            if (extractedExercises.length > 0) {
+                saveExercisesFromExtractedList(extractedExercises, cacheExerciseMutation).catch(error => {
+                    console.error("Failed to save exercises to database:", error);
+                    // Don't throw - plan creation succeeded, exercise saving is bonus
+                });
+            }
+            
+            // Save to sport buckets if user has sport-specific training
+            if (userProfile?.trainingPreferences?.sport_specific && userId) {
+                savePlanToSportBuckets(planWithId, userProfile.trainingPreferences.sport_specific).catch(error => {
+                    console.error("Failed to save to sport buckets:", error);
+                    // Don't throw - this is optional optimization
+                });
+            }
+            
+            // Plan is automatically set as active when created
+            return planId;
         } catch (error) {
             console.error("Error adding new plan:", error);
+            // Log the normalized plan structure for debugging
+            try {
+                const normalizedPlan = normalizePlanForConvex(newPlanData);
+                console.error("Normalized plan structure:", JSON.stringify(normalizedPlan.weeklyPlan[0]?.blocks[0], null, 2));
+            } catch (e) {
+                console.error("Could not log normalized plan:", e);
+            }
+            throw error; // Re-throw so caller can handle it
         }
-    }, [userId, setActivePlan]);
+    };
     
-    const updatePlan = useCallback(async (updatedPlan: WorkoutPlan) => {
-        if (!userId || !updatedPlan.id) return;
-        const planDocRef = doc(db, 'users', userId, 'plans', updatedPlan.id);
+    // Save plan exercises to sport buckets for intelligent selection
+    const savePlanToSportBuckets = async (plan: WorkoutPlan, sport: string) => {
+        if (!userId) return;
+        
+        for (const day of plan.weeklyPlan) {
+            for (const block of day.blocks) {
+                for (const exercise of block.exercises) {
+                    try {
+                        await updateSportBucketMutation({
+                            sport,
+                            exercise_name: exercise.exercise_name,
+                            category: exercise.category || 'main',
+                            placement: exercise.category || 'main',
+                            userId,
+                        });
+                    } catch (error) {
+                        console.error(`Failed to save ${exercise.exercise_name} to sport bucket:`, error);
+                        // Continue with other exercises
+                    }
+                }
+            }
+        }
+    };
+    
+    const updatePlan = async (updatedPlan: WorkoutPlan) => {
+        if (!updatedPlan.id || !userId) return;
+        
         try {
-            // Avoid clobbering Firestore-managed fields such as createdAt and id
-            const { id: _omitId, createdAt: _omitCreatedAt, ...editable } = updatedPlan as any;
-            await setDoc(planDocRef, editable, { merge: true });
+            await updatePlanMutation({
+                userId,
+                planId: updatedPlan.id as Id<"workoutPlans">,
+                name: updatedPlan.name,
+                weeklyPlan: updatedPlan.weeklyPlan,
+                dailyRoutine: updatedPlan.dailyRoutine || undefined,
+            });
         } catch(error) {
             console.error("Error updating plan:", error);
         }
-    }, [userId]);
+    };
 
-    const deletePlan = useCallback(async (planId: string) => {
+    const deletePlan = async (planId: Id<"workoutPlans">) => {
         if (!userId) return;
-
-        const planDocRef = doc(db, 'users', userId, 'plans', planId);
+        
         try {
-            await deleteDoc(planDocRef);
-            // The onSnapshot listener will handle updating state
+            await deletePlanMutation({ userId, planId });
         } catch (error) {
             console.error("Error deleting plan:", error);
         }
-    }, [userId]);
+    };
 
-    return { allPlans, activePlan, addPlan, updatePlan, deletePlan, setActivePlan, planLoaded };
+    // Convert Convex plans to WorkoutPlan format
+    const plans: WorkoutPlan[] | null = allPlans ? allPlans.map(plan => ({
+        id: plan._id,
+        name: plan.name,
+        weeklyPlan: plan.weeklyPlan,
+        dailyRoutine: plan.dailyRoutine || undefined,
+        createdAt: plan.createdAt,
+    })) : null;
+
+    const activePlanFormatted: WorkoutPlan | null = activePlan ? {
+        id: activePlan._id,
+        name: activePlan.name,
+        weeklyPlan: activePlan.weeklyPlan,
+        dailyRoutine: activePlan.dailyRoutine || undefined,
+        createdAt: activePlan.createdAt,
+    } : null;
+
+    const planLoaded = (allPlans !== undefined && activePlan !== undefined) || !userId;
+
+    return { 
+        allPlans: plans, 
+        activePlan: activePlanFormatted, 
+        addPlan, 
+        updatePlan, 
+        deletePlan, 
+        setActivePlan, 
+        planLoaded 
+    };
 }

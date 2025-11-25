@@ -1,140 +1,97 @@
-import React, { useState, FormEvent } from 'react';
-import { auth } from '../firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { LogoIcon, XCircleIcon } from '../components/icons';
+import React from 'react';
+import { useTranslation } from 'react-i18next';
+import { SignIn, SignUp } from '@clerk/clerk-react';
+import { LogoIcon } from '../components/icons';
+import { clerkAppearance } from '../config/clerkAppearance';
 
 export default function AuthPage() {
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        await createUserWithEmailAndPassword(auth, email, password);
-      }
-      // onAuthStateChanged in App.tsx will handle the rest
-    } catch (err) {
-      const authError = err as any;
-      switch (authError.code) {
-        case 'auth/invalid-email':
-          setError('Please enter a valid email address.');
-          break;
-        case 'auth/invalid-credential':
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
-          setError('Invalid credentials. Please check your email and password.');
-          break;
-        case 'auth/email-already-in-use':
-          setError('An account with this email already exists.');
-          break;
-        case 'auth/weak-password':
-            setError('Password should be at least 6 characters.');
-            break;
-        case 'auth/operation-not-allowed':
-             setError("Sign-in method is not enabled. Please check your Firebase project's Authentication settings.");
-             console.error("Firebase Auth Error: Email/Password sign-in method is not enabled in the Firebase console.");
-             break;
-        case 'auth/invalid-api-key':
-             setError("Invalid API key. Please check your Firebase configuration.");
-             break;
-         case 'auth/network-request-failed':
-             setError("Network error. Please check your internet connection.");
-             break;
-        default:
-          console.error("Authentication error:", authError);
-          setError('An unexpected error occurred. Please try again.');
-          break;
-      }
-      setLoading(false);
-    }
-  };
+  const { t } = useTranslation();
+  const [isLogin, setIsLogin] = React.useState(true);
 
   return (
-    <div className="w-full min-h-screen flex flex-col items-center justify-center p-4 bg-stone-950 overflow-hidden relative">
-        <div className="absolute inset-0 bg-radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(160,140,220,0.2),rgba(255,255,255,0)) -z-10"></div>
-        <div className="relative w-full max-w-sm p-8 space-y-8 bg-stone-800/50 border border-stone-700 rounded-3xl shadow-2xl backdrop-blur-lg animate-scale-in-center">
-            <div className="text-center">
-                <LogoIcon className="mx-auto text-6xl text-white animate-fade-in-down-custom" style={{ animationDelay: '200ms' }} />
-                <p className="mt-4 text-lg text-stone-300 font-semibold animate-fade-in-custom" style={{ animationDelay: '400ms' }}>
-                    Rebuild. Reshape. Renew.
-                </p>
+    <div className="w-full min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      {/* Animated mesh gradient background */}
+      <div className="absolute inset-0 -z-10 gradient-mesh opacity-60" />
+
+      {/* Floating orbs */}
+      <div className="absolute inset-0 overflow-hidden -z-10">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-[var(--primary)] rounded-full blur-[140px] opacity-20 animate-pulse-subtle" />
+        <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-[var(--accent)] rounded-full blur-[120px] opacity-20 animate-pulse-subtle" style={{ animationDelay: '1s' }} />
+        <div className="absolute top-1/2 left-1/2 w-72 h-72 bg-[var(--accent-cardio)] rounded-full blur-[100px] opacity-15 animate-pulse-subtle" style={{ animationDelay: '2s' }} />
+      </div>
+
+      <div className="relative w-full max-w-md space-y-8">
+        {/* Premium logo presentation */}
+        <div className="text-center animate-fade-in-down">
+          {/* Logo with glow */}
+          <div className="relative inline-block mb-6">
+            <div className="absolute inset-0 bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] opacity-20 blur-2xl rounded-full" />
+            <div className="relative font-display text-6xl font-black logo-spacing">
+              <span className="text-[var(--text-primary)]">RE</span>
+              <span className="text-[var(--accent)]">BLD</span>
             </div>
+          </div>
 
-            <div className="space-y-6">
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="animate-fade-in-up-custom" style={{ animationDelay: '500ms' }}>
-                        <label htmlFor="email" className="sr-only">
-                        Email address
-                        </label>
-                        <input
-                            id="email"
-                            name="email"
-                            type="email"
-                            autoComplete="email"
-                            required
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="Email address"
-                            className="w-full px-5 py-3 text-lg text-white bg-stone-800/50 rounded-xl border border-stone-700 placeholder-stone-400 focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:outline-none transition"
-                        />
-                    </div>
-
-                    <div className="animate-fade-in-up-custom" style={{ animationDelay: '600ms' }}>
-                        <label htmlFor="password"className="sr-only">
-                        Password
-                        </label>
-                        <input
-                            id="password"
-                            name="password"
-                            type="password"
-                            autoComplete="current-password"
-                            required
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Password"
-                           className="w-full px-5 py-3 text-lg text-white bg-stone-800/50 rounded-xl border border-stone-700 placeholder-stone-400 focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:outline-none transition"
-                        />
-                    </div>
-                    
-                    {error && (
-                        <div className="bg-red-500/10 border border-red-500/30 text-red-300 px-4 py-3 rounded-lg flex items-center animate-fade-in-custom" role="alert">
-                            <XCircleIcon className="w-5 h-5 mr-2 flex-shrink-0 text-red-400"/>
-                            <span className="text-sm">{error}</span>
-                        </div>
-                    )}
-
-                    <div className="animate-fade-in-up-custom" style={{ animationDelay: '700ms' }}>
-                        <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg text-lg font-bold text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-stone-950 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-105"
-                        >
-                        {loading ? (
-                            <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                        ) : (isLogin ? 'Sign In' : 'Create Account')}
-                        </button>
-                    </div>
-                </form>
-
-                <p className="mt-8 text-center text-base text-stone-400 animate-fade-in-custom" style={{ animationDelay: '800ms' }}>
-                    {isLogin ? "Don't have an account?" : "Already have an account?"}{' '}
-                    <button onClick={() => { setIsLogin(!isLogin); setError(null); }} className="font-semibold text-red-400 hover:text-red-500 hover:underline focus:outline-none">
-                        {isLogin ? 'Sign up' : 'Sign in'}
-                    </button>
-                </p>
-            </div>
+          <p className="text-[17px] text-[var(--text-secondary)] font-semibold animate-fade-in leading-relaxed" style={{ animationDelay: '200ms' }}>
+            {t('home.tagline')}
+          </p>
+          <p className="text-[13px] text-[var(--text-tertiary)] mt-2 animate-fade-in" style={{ animationDelay: '300ms' }}>
+            Your AI-powered training partner
+          </p>
         </div>
+
+        {/* Premium glass container */}
+        <div className="card-glass rounded-3xl p-6 shadow-elevated animate-scale-in" style={{ animationDelay: '400ms' }}>
+          {/* Enhanced tab switcher */}
+          <div className="flex gap-2 mb-6 p-1.5 bg-[var(--surface-secondary)] rounded-2xl">
+            <button
+              onClick={() => setIsLogin(true)}
+              className={`flex-1 px-6 py-3 rounded-xl font-bold text-[15px] transition-all ${
+                isLogin
+                  ? 'bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-white shadow-md scale-105'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              {t('auth.signIn')}
+            </button>
+            <button
+              onClick={() => setIsLogin(false)}
+              className={`flex-1 px-6 py-3 rounded-xl font-bold text-[15px] transition-all ${
+                !isLogin
+                  ? 'bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-white shadow-md scale-105'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              {t('auth.signUp')}
+            </button>
+          </div>
+
+          {/* Clerk component */}
+          <div className="flex justify-center">
+            {isLogin ? (
+              <SignIn appearance={clerkAppearance as any} />
+            ) : (
+              <SignUp appearance={clerkAppearance as any} />
+            )}
+          </div>
+        </div>
+
+        {/* Trust indicators */}
+        <div className="flex items-center justify-center gap-6 text-[11px] text-[var(--text-tertiary)] animate-fade-in" style={{ animationDelay: '600ms' }}>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[var(--success)]" />
+            Secure
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[var(--primary)]" />
+            AI-Powered
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[var(--accent)]" />
+            Free to Start
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

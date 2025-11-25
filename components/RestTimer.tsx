@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PlusIcon, ForwardIcon } from './icons';
 
 interface RestTimerProps {
@@ -33,6 +34,7 @@ const playNotificationSound = () => {
 };
 
 export default function RestTimer({ duration, onComplete, onFinish, onSkip, timerKey, mute = false, vibrate = false }: RestTimerProps) {
+  const { t } = useTranslation();
   const [timeLeft, setTimeLeft] = useState(duration);
   const intervalRef = useRef<number | null>(null);
 
@@ -73,55 +75,100 @@ export default function RestTimer({ duration, onComplete, onFinish, onSkip, time
   };
   
   const progress = (timeLeft / duration);
-  const radius = 60;
+  const radius = 36; // 60% smaller (was 60)
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - progress * circumference;
 
   return (
-    <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-8 animate-scale-in" style={{ boxShadow: 'var(--shadow-lg)' }}>
-      <div className="relative w-full aspect-square max-w-xs mx-auto flex flex-col items-center justify-center text-center">
-        <svg className="absolute w-full h-full" viewBox="0 0 140 140">
-            <circle
-                className="text-[var(--surface-secondary)]"
-                stroke="currentColor"
-                strokeWidth="6"
-                fill="transparent"
-                r={radius}
-                cx="70"
-                cy="70"
-            />
-            <circle
-                className="text-[var(--accent)]"
-                stroke="currentColor"
-                strokeWidth="6"
-                fill="transparent"
-                r={radius}
-                cx="70"
-                cy="70"
-                strokeLinecap="round"
-                transform="rotate(-90 70 70)"
-                style={{
-                    strokeDasharray: circumference,
-                    strokeDashoffset: strokeDashoffset,
-                    transition: 'stroke-dashoffset 1s linear',
-                    filter: 'drop-shadow(var(--glow-red))'
-                }}
-            />
+    <div className="bg-[var(--surface)] border border-[var(--border-card)] rounded-3xl p-6 sm:p-8 animate-scale-in shadow-elevated">
+      {/* Timer circle with gradient and glow */}
+      <div className="relative w-full max-w-[240px] aspect-square mx-auto mb-6">
+        {/* Outer glow ring */}
+        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] opacity-20 blur-xl animate-pulse-subtle"></div>
+
+        {/* SVG timer with gradient */}
+        <svg className="relative w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+          {/* Background circle */}
+          <circle
+            className="text-[var(--surface-secondary)]"
+            stroke="currentColor"
+            strokeWidth="6"
+            fill="transparent"
+            r={radius}
+            cx="50"
+            cy="50"
+          />
+          {/* Progress circle with gradient */}
+          <circle
+            stroke="url(#timer-gradient)"
+            strokeWidth="6"
+            fill="transparent"
+            r={radius}
+            cx="50"
+            cy="50"
+            strokeLinecap="round"
+            style={{
+              strokeDasharray: circumference,
+              strokeDashoffset: strokeDashoffset,
+              transition: 'stroke-dashoffset 1s linear'
+            }}
+          />
+          <defs>
+            <linearGradient id="timer-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="var(--accent)" />
+              <stop offset="50%" stopColor="var(--primary)" />
+              <stop offset="100%" stopColor="var(--accent-cardio)" />
+            </linearGradient>
+          </defs>
         </svg>
-        <div className="z-10">
-            <p className="text-[11px] font-bold text-[var(--text-tertiary)] tracking-widest uppercase mb-2">Rest</p>
-            <p className="font-syne text-7xl font-bold text-[var(--text-primary)] mb-4">{timeLeft}</p>
-            <p className="text-[13px] text-[var(--text-secondary)]">Get ready for next set</p>
+
+        {/* Center content */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--text-tertiary)] mb-2">
+            {t('session.rest')}
+          </p>
+          <p className="text-6xl sm:text-7xl font-black text-[var(--text-primary)] tabular-nums stat-number">
+            {timeLeft}
+          </p>
+          <p className="text-[13px] text-[var(--text-secondary)] mt-2 font-medium">
+            {t('session.getReady')}
+          </p>
+
+          {/* Breathing indicator in final 5 seconds */}
+          {timeLeft <= 5 && timeLeft > 0 && (
+            <div className="mt-4 flex gap-1.5">
+              {[...Array(3)].map((_, i) => (
+                <div
+                  key={i}
+                  className="w-2 h-2 rounded-full bg-[var(--accent)]"
+                  style={{
+                    animation: 'breathe 2s ease-in-out infinite',
+                    animationDelay: `${i * 0.3}s`
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-3 mt-8">
-           <button onClick={handleAddTime} className="flex items-center gap-2 px-5 py-3 bg-[var(--surface-secondary)] text-[var(--text-primary)] text-[14px] font-semibold rounded-lg hover:bg-[var(--surface-hover)] transition">
-              <PlusIcon className="w-4 h-4" /> +15s
-          </button>
-           <button onClick={handleSkip} className="flex items-center gap-2 px-5 py-3 bg-[var(--accent)] text-white text-[14px] font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition" style={{ boxShadow: 'var(--glow-red)' }}>
-              Skip <ForwardIcon className="w-4 h-4" />
-          </button>
+      {/* Enhanced buttons */}
+      <div className="flex gap-3">
+        <button
+          onClick={handleAddTime}
+          className="flex-1 flex items-center justify-center gap-2 h-12 px-4 bg-[var(--surface-secondary)] text-[var(--text-primary)] text-[14px] font-semibold rounded-xl border border-[var(--border)] hover:border-[var(--primary)] hover:bg-[var(--primary-light)] hover:text-[var(--primary)] transition-all active:scale-95"
+        >
+          <PlusIcon className="w-4 h-4" />
+          {t('workout.add15s')}
+        </button>
+
+        <button
+          onClick={handleSkip}
+          className="flex-[2] flex items-center justify-center gap-2 h-12 px-5 bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white text-[14px] font-bold rounded-xl hover:shadow-lg hover:scale-105 transition-all active:scale-95 shadow-md"
+        >
+          {t('session.skip')}
+          <ForwardIcon className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );

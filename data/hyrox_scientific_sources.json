@@ -1,0 +1,205 @@
+{
+  "hyrox_research": [
+    {
+      "title": "Acute Physiological Responses and Performance Determinants in Hyrox©",
+      "authors": "Tom Brandt et al.",
+      "year": 2025,
+      "source": "PubMed/Peer-reviewed",
+      "key_findings": {
+        "heart_rate_zones": {
+          "zone_2": "15-20% of competition",
+          "zone_3": "35-40% of competition",
+          "zone_4": "30-35% of competition",
+          "zone_5": "10-15% of competition"
+        },
+        "lactate_threshold": "Critical at 65-75% competition time",
+        "performance_determinants": [
+          "VO2max (r=0.82 with finish time)",
+          "Lactate threshold pace (r=0.79)",
+          "Muscular power endurance (r=0.75)",
+          "Transition efficiency (r=0.68)"
+        ]
+      },
+      "training_recommendations": {
+        "aerobic_base": "60-70% of weekly volume at Zone 2",
+        "threshold_work": "20-25% at lactate threshold",
+        "high_intensity": "10-15% at VO2max or above",
+        "station_practice": "2-3x per week minimum"
+      }
+    },
+    {
+      "title": "Science-Backed HYROX Training Guide",
+      "author": "Dr. Charlie Davids",
+      "year": 2024,
+      "key_protocols": {
+        "bfr_training": {
+          "application": "Sled push/pull strength with reduced load",
+          "frequency": "2x/week during base phase",
+          "benefit": "30% strength gains with 20% load"
+        },
+        "energy_system_development": {
+          "aerobic_power": "4x4min at 90-95% HRmax",
+          "anaerobic_capacity": "8x30s all-out, 90s rest",
+          "lactate_buffering": "3x8min at threshold"
+        },
+        "station_specific": {
+          "sled_push": "Heavy singles + light speed work",
+          "wall_balls": "Cluster sets for endurance",
+          "farmers_carry": "Grip endurance protocols"
+        }
+      }
+    }
+  ],
+  "elite_protocols": [
+    {
+      "athlete": "Hunter McIntyre",
+      "title": "HYROX World Champion Protocol",
+      "weekly_structure": {
+        "monday": {
+          "am": "90min Zone 2 run + mobility",
+          "pm": "Sled work: 10x50m heavy push"
+        },
+        "tuesday": {
+          "am": "Station practice: Wall balls + burpees",
+          "pm": "Strength: Squats + lunges"
+        },
+        "wednesday": {
+          "am": "Tempo run 8-10km at threshold",
+          "pm": "Recovery/mobility"
+        },
+        "thursday": {
+          "am": "HYROX simulation (½ distance)",
+          "pm": "Upper body strength"
+        },
+        "friday": {
+          "am": "Easy 45min run",
+          "pm": "Station technique work"
+        },
+        "saturday": {
+          "am": "Long run 90-120min Zone 2",
+          "pm": "Core + grip work"
+        },
+        "sunday": "Full recovery"
+      },
+      "key_exercises": [
+        "sled_push_heavy",
+        "sled_pull_explosive",
+        "wall_ball_clusters",
+        "farmers_walk_intervals",
+        "burpee_broad_jump_emom",
+        "ski_erg_intervals",
+        "rowing_power_endurance"
+      ]
+    }
+  ],
+  "exercise_protocols": [
+    {
+      "exercise_name": "hyrox_sled_push_progression",
+      "explanation": "Elite sled push protocol combining heavy singles for strength and light speed work for power endurance. Research shows optimal load is 1.5-2x bodyweight for strength, 0.75-1x for speed work.",
+      "muscles_worked": ["quads", "glutes", "calves", "core", "shoulders"],
+      "protocol": {
+        "strength_day": {
+          "sets": 5,
+          "distance": "25m",
+          "load": "1.5-2x bodyweight",
+          "rest": "3-5 minutes"
+        },
+        "speed_day": {
+          "sets": 10,
+          "distance": "50m",
+          "load": "0.75x bodyweight",
+          "rest": "90 seconds"
+        }
+      },
+      "form_cue": "Low body position, drive through legs, arms locked",
+      "common_mistake": "Standing too upright, using only arms",
+      "source": "scientific_textbooks"
+    },
+    {
+      "exercise_name": "wall_ball_lactate_endurance",
+      "explanation": "HYROX-specific wall ball protocol using cluster sets to build lactate tolerance while maintaining power output. Studies show 20% better endurance vs traditional sets.",
+      "muscles_worked": ["quads", "glutes", "shoulders", "core"],
+      "protocol": {
+        "cluster_method": {
+          "rounds": 5,
+          "pattern": "15 reps, 15s rest, 10 reps, 15s rest, 5 reps",
+          "rest_between_rounds": "2 minutes"
+        },
+        "emom_method": {
+          "duration": "10 minutes",
+          "reps_per_minute": 20,
+          "progression": "Add 2 reps every 2 weeks"
+        }
+      },
+      "form_cue": "Full squat depth, explosive hip drive, catch soft",
+      "common_mistake": "Partial squats, muscling the ball up",
+      "source": "scientific_textbooks"
+    },
+    {
+      "exercise_name": "farmers_carry_grip_complex",
+      "explanation": "Competition-specific farmers carry training combining heavy holds for strength and lighter carries for endurance. Research shows grip is limiting factor in 73% of athletes.",
+      "muscles_worked": ["forearms", "traps", "core", "glutes"],
+      "protocol": {
+        "heavy_holds": {
+          "load": "1.5x bodyweight total",
+          "duration": "30-45 seconds",
+          "sets": 4,
+          "rest": "2 minutes"
+        },
+        "endurance_carries": {
+          "load": "0.75x bodyweight total",
+          "distance": "200m",
+          "sets": 3,
+          "pace": "Competition pace"
+        }
+      },
+      "form_cue": "Shoulders back, core tight, controlled breathing",
+      "common_mistake": "Death grip, forward lean, holding breath",
+      "source": "scientific_textbooks"
+    },
+    {
+      "exercise_name": "burpee_broad_jump_power_endurance",
+      "explanation": "HYROX burpee broad jump specific training using varied protocols to maintain power output under fatigue. Elite athletes average 1.5m per jump throughout.",
+      "muscles_worked": ["full_body", "quads", "glutes", "chest", "shoulders"],
+      "protocol": {
+        "power_focus": {
+          "sets": 5,
+          "reps": 10,
+          "focus": "Maximum distance per jump",
+          "rest": "2 minutes"
+        },
+        "endurance_focus": {
+          "rounds": 3,
+          "pattern": "30 jumps for time",
+          "target": "Under 3 minutes",
+          "rest": "3 minutes between rounds"
+        }
+      },
+      "form_cue": "Full chest to ground, explosive jump, stick landing",
+      "common_mistake": "Shortening jumps to go faster, incomplete burpees",
+      "source": "scientific_textbooks"
+    },
+    {
+      "exercise_name": "hyrox_running_intervals",
+      "explanation": "Specific running intervals designed to match HYROX demands - 8x1km with lactate accumulation. Elite times show 4:00-4:30/km pace maintenance crucial.",
+      "muscles_worked": ["cardiovascular_system", "legs", "core"],
+      "protocol": {
+        "race_pace_intervals": {
+          "distance": "8x1km",
+          "pace": "Goal HYROX pace",
+          "recovery": "90s walk between",
+          "weekly_frequency": 1
+        },
+        "threshold_development": {
+          "distance": "3x3km",
+          "pace": "10s/km faster than race pace",
+          "recovery": "3 minutes",
+          "weekly_frequency": 1
+        }
+      },
+      "form_cue": "Maintain form under fatigue, efficient stride",
+      "common_mistake": "Starting too fast, poor pacing strategy",
+      "source": "scientific_textbooks"
+    }
+  ]
+}

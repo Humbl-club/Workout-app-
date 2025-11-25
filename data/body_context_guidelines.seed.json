@@ -1,0 +1,138 @@
+[
+  {
+    "band": "bmi_gt_35",
+    "athletic_level": "low",
+    "body_type": null,
+    "guidelines": [
+      "Prioritize joint-friendly conditioning (sled, bike, row, swimming)",
+      "Emphasize controlled strength patterns; avoid high-impact initially",
+      "Progress impact gradually over 8-12 weeks",
+      "Include daily low-intensity movement"
+    ],
+    "recommended_modalities": ["sled push", "air bike", "rower", "swimming", "step-up", "leg press"],
+    "avoid": ["high-volume jumping", "long-distance running", "excessive plyometrics"],
+    "evidence_level": "low",
+    "source": "Coach heuristics, ACSM Guidelines",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "band": "bmi_32_35",
+    "athletic_level": "low",
+    "body_type": null,
+    "guidelines": [
+      "Limit high-impact plyos; use joint-friendly conditioning (sled, bike, row)",
+      "Emphasize controlled strength patterns with stable bases",
+      "Progress impact gradually over weeks"
+    ],
+    "recommended_modalities": ["sled push", "air bike", "rower", "step-up"],
+    "avoid": ["high-volume jumping", "long-distance running initially"],
+    "evidence_level": "low",
+    "source": "Coach heuristics",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "band": "bmi_gt_32",
+    "athletic_level": "low",
+    "body_type": null,
+    "guidelines": [
+      "Limit high-impact plyos; use joint-friendly conditioning (sled, bike, row)",
+      "Emphasize controlled strength patterns with stable bases",
+      "Progress impact gradually over weeks"
+    ],
+    "recommended_modalities": ["sled push", "air bike", "rower", "step-up"],
+    "avoid": ["high-volume jumping", "long-distance running initially"],
+    "evidence_level": "low",
+    "source": "Coach heuristics",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "band": "bmi_27_32",
+    "athletic_level": "moderate",
+    "body_type": "muscular",
+    "guidelines": [
+      "Maintain robust strength loading; choose knee/hip friendly impact",
+      "Use mixed-modal conditioning (bike/row/run) based on comfort",
+      "Include single-leg strength and trunk stability weekly"
+    ],
+    "recommended_modalities": ["trap bar deadlift", "split squat", "sled push", "tempo run"],
+    "avoid": ["excessive downhill running volume"],
+    "evidence_level": "low",
+    "source": "Coach heuristics",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "band": "bmi_27_32",
+    "athletic_level": "low",
+    "body_type": null,
+    "guidelines": [
+      "Moderate impact tolerance; progress gradually",
+      "Include strength training 2-3x/week",
+      "Mix low-impact and moderate-impact conditioning"
+    ],
+    "recommended_modalities": ["trap bar deadlift", "sled push", "bike intervals", "walking"],
+    "avoid": ["excessive high-impact initially"],
+    "evidence_level": "low",
+    "source": "Coach heuristics",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "band": "bmi_lt_27",
+    "athletic_level": "high",
+    "body_type": "lean",
+    "guidelines": [
+      "Full range of training modalities available",
+      "Can handle high-impact and high-intensity work",
+      "Maintain strength and power development"
+    ],
+    "recommended_modalities": ["squat", "deadlift", "plyometrics", "sprint intervals", "olympic lifts"],
+    "avoid": [],
+    "evidence_level": "low",
+    "source": "Coach heuristics",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "band": "bmi_lt_27",
+    "athletic_level": "moderate",
+    "body_type": "average",
+    "guidelines": [
+      "Standard training approach; balanced strength and conditioning",
+      "Include variety in movement patterns",
+      "Progressive overload principles apply"
+    ],
+    "recommended_modalities": ["squat", "deadlift", "press", "row", "conditioning circuits"],
+    "avoid": [],
+    "evidence_level": "low",
+    "source": "Coach heuristics",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "band": "bmi_lt_27",
+    "athletic_level": "low",
+    "body_type": null,
+    "guidelines": [
+      "Focus on building base strength and movement quality",
+      "Progressive overload; start with lighter loads",
+      "Include mobility and stability work"
+    ],
+    "recommended_modalities": ["goblet squat", "trap bar deadlift", "push-up", "row", "plank"],
+    "avoid": [],
+    "evidence_level": "low",
+    "source": "Coach heuristics",
+    "last_reviewed": "2025-01-01"
+  },
+  {
+    "band": "bmi_27_32",
+    "athletic_level": "high",
+    "body_type": "muscular",
+    "guidelines": [
+      "Maintain high-intensity training; body composition supports performance",
+      "Full range of modalities; prioritize sport-specific needs",
+      "Recovery and nutrition critical for performance"
+    ],
+    "recommended_modalities": ["squat", "deadlift", "plyometrics", "sprint work", "sport-specific drills"],
+    "avoid": [],
+    "evidence_level": "low",
+    "source": "Coach heuristics",
+    "last_reviewed": "2025-01-01"
+  }
+]

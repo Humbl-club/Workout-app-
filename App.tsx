@@ -1,58 +1,63 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { PlanDay, WorkoutLog, LoggedExercise, WorkoutPlan, DailyRoutine, UserProfile } from './types';
+import { useUser } from '@clerk/clerk-react';
+import { useMutation } from 'convex/react';
+import { api } from './convex/_generated/api';
 import Onboarding from './components/PlanImporter';
 import SessionTracker from './components/SessionTracker';
 import Chatbot from './components/Chatbot';
-import { SparklesIcon } from './components/icons';
 import Navbar from './components/layout/Navbar';
+import { ZapIcon } from './components/icons';
 import HomePage from './pages/HomePage';
 import PlanPage from './pages/PlanPage';
 import ProfilePage from './pages/ProfilePage';
 import GoalTrackingPage from './pages/GoalTrackingPage';
 import SessionSummaryPage from './pages/SessionSummaryPage';
+import BuddiesPage from './pages/BuddiesPage';
 import useWorkoutLogs from './hooks/useWorkoutLogs';
 import useWorkoutPlan from './hooks/useWorkoutPlan';
 import useUserProfile from './hooks/useUserProfile';
-import { auth } from './firebase';
-import { onAuthStateChanged, User } from 'firebase/auth';
 import AuthPage from './pages/AuthPage';
 import FullScreenLoader from './components/layout/FullScreenLoader';
 import ToastContainer from './components/layout/Toast';
+import { useTheme } from './hooks/useTheme';
 
 
-type Page = 'home' | 'goals' | 'plan' | 'profile';
+type Page = 'home' | 'goals' | 'buddies' | 'plan' | 'profile';
 type SessionType = PlanDay | DailyRoutine;
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  
-  const { 
-    activePlan, 
-    allPlans, 
-    addPlan, 
-    deletePlan, 
+  const { user, isLoaded: clerkLoaded } = useUser();
+  const { theme, toggleTheme } = useTheme();
+
+  const {
+    activePlan,
+    allPlans,
+    addPlan,
+    deletePlan,
     updatePlan,
     setActivePlan,
-    planLoaded 
-  } = useWorkoutPlan(user?.uid);
-  const { logs, addLog, logsLoaded } = useWorkoutLogs(user?.uid);
-  const { userProfile, updateUserProfile, profileLoaded } = useUserProfile(user?.uid);
+    planLoaded
+  } = useWorkoutPlan();
+  const { logs, addLog, logsLoaded } = useWorkoutLogs();
+  const { userProfile, updateUserProfile, profileLoaded } = useUserProfile();
+
+  // Ensure user code is generated on login
+  const ensureUserCodeMutation = useMutation(api.userCodeMutations.ensureUserCode);
+
+  useEffect(() => {
+    if (user?.id) {
+      ensureUserCodeMutation({ userId: user.id }).catch(() => {
+        // Silent fail, will try again next time
+      });
+    }
+  }, [user?.id, ensureUserCodeMutation]);
 
   const [activeSession, setActiveSession] = useState<PlanDay | null>(null);
   const [sessionToSummarize, setSessionToSummarize] = useState<WorkoutLog | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [initialChatMessage, setInitialChatMessage] = useState('');
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
 
   const handleStartSession = useCallback((session: SessionType) => {
     // Normalize DailyRoutine into a PlanDay with a single block so SessionTracker can handle it
@@ -77,18 +82,39 @@ export default function App() {
     }
   }, []);
 
+  const updateStreakMutation = useMutation(api.achievementMutations.updateStreak);
+
   const handleFinishSession = useCallback((sessionLog: { focus: string, exercises: LoggedExercise[], durationMinutes: number }) => {
     addLog({
       focus: sessionLog.focus,
       exercises: sessionLog.exercises,
       durationMinutes: sessionLog.durationMinutes,
     });
+
+    // Update streak and check achievements
+    if (user?.id) {
+      updateStreakMutation({
+        userId: user.id,
+        workoutDate: new Date().toISOString()
+      }).then((result) => {
+        if (result.achievementsUnlocked.length > 0) {
+          // Show achievement unlock notification
+          notify({
+            type: 'success',
+            message: 'Achievement unlocked!'
+          });
+        }
+      }).catch(() => {
+        // Silent fail - streak tracking is not critical
+      });
+    }
+
     setSessionToSummarize({
         ...sessionLog,
         date: new Date().toISOString()
     });
     setActiveSession(null);
-  }, [addLog]);
+  }, [addLog, user, updateStreakMutation]);
 
   const handleCancelSession = useCallback(() => {
     setActiveSession(null);
@@ -96,7 +122,7 @@ export default function App() {
 
   const handleDeleteActivePlan = useCallback(async () => {
     if (activePlan?.id) {
-      await deletePlan(activePlan.id);
+      await deletePlan(activePlan.id as any);
       setCurrentPage('home');
     }
   }, [deletePlan, activePlan]);
@@ -105,15 +131,37 @@ export default function App() {
     updatePlan(updatedPlan);
   };
   
-  const handlePlanGenerated = useCallback(async (plan: WorkoutPlan) => {
-      await addPlan(plan);
+  const handlePlanGenerated = useCallback(async (plan: Omit<WorkoutPlan, 'id' | 'createdAt'>) => {
+      // Navigate to home immediately - don't wait for save to complete
       setCurrentPage('home');
+      
+      // If plan is empty (error case), we're already navigating home
+      if (!plan || !plan.name || !plan.weeklyPlan) {
+        return;
+      }
+      
+      try {
+        // Save plan in background - Convex will update activePlan query automatically
+        await addPlan(plan);
+      } catch (error) {
+        console.error("Failed to save plan:", error);
+        // User is already on home page, they can try again if needed
+      }
   }, [addPlan]);
 
-  const handleCreateNewPlan = useCallback(() => {
-    // Temporarily clear active plan to trigger onboarding
-    setActivePlan('');
-  }, [setActivePlan]);
+  const handleCreateNewPlan = useCallback(async () => {
+    // Delete active plan to trigger onboarding flow
+    if (activePlan?.id) {
+      if (confirm('Create a new plan? This will replace your current workout plan.')) {
+        try {
+          await deletePlan(activePlan.id);
+          setCurrentPage('home'); // Navigate to home where onboarding will show
+        } catch (error) {
+          console.error('Error deleting plan:', error);
+        }
+      }
+    }
+  }, [activePlan, deletePlan]);
 
   const handleOpenChatWithMessage = useCallback((message: string) => {
     setInitialChatMessage(message);
@@ -142,9 +190,12 @@ export default function App() {
         onFinish={handleFinishSession}
         onCancel={handleCancelSession}
         allLogs={logs || []}
+        onOpenChatWithMessage={handleOpenChatWithMessage}
       />;
     }
     
+    // Show onboarding only if no active plan exists
+    // After plan creation, we navigate immediately, and Convex will update activePlan automatically
     if (!activePlan) {
         return <Onboarding onPlanGenerated={handlePlanGenerated} />
     }
@@ -155,9 +206,12 @@ export default function App() {
                     plan={activePlan}
                     onStartSession={handleStartSession}
                     onOpenChat={() => setIsChatOpen(true)}
+                    userProfile={userProfile}
                 />;
       case 'goals':
         return <GoalTrackingPage logs={logs || []} plan={activePlan} userGoals={userProfile?.goals} />;
+      case 'buddies':
+        return <BuddiesPage />;
       case 'plan':
         return <PlanPage activePlan={activePlan} onStartSession={handleStartSession} />;
       case 'profile':
@@ -171,7 +225,7 @@ export default function App() {
     }
   };
   
-  if (authLoading || (user && (!logsLoaded || !planLoaded || !profileLoaded))) {
+  if (!clerkLoaded || (user && (!logsLoaded || !planLoaded || !profileLoaded))) {
       return <FullScreenLoader />;
   }
   
@@ -180,24 +234,31 @@ export default function App() {
   }
 
   return (
-    <div className="relative min-h-screen w-full">
-      <div className="min-h-screen w-full flex flex-col items-center selection:bg-[var(--accent-light)] selection:text-[var(--accent)]">
+    <div className="relative min-h-screen w-full overflow-hidden">
+      <div className="min-h-screen w-full flex flex-col items-center selection:bg-[var(--accent-light)] selection:text-[var(--accent)] overflow-y-auto">
         {renderPage()}
       </div>
 
       {!activeSession && !sessionToSummarize && (
         <>
-            {currentPage !== 'home' && (
-                <button
-                    onClick={() => setIsChatOpen(true)}
-                    className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-5 p-3.5 bg-[var(--accent)] text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--background)] focus:ring-[var(--accent)] transition-all hover:opacity-90 active:scale-95 z-30 w-14 h-14"
-                    aria-label="Open AI Chat"
-                    style={{ boxShadow: 'var(--glow-red)' }}
-                >
-                    <SparklesIcon className="h-7 w-7" />
-                </button>
+            {activePlan && (
+                <>
+                    <Navbar 
+                        currentPage={currentPage} 
+                        onNavigate={setCurrentPage}
+                        onToggleTheme={toggleTheme}
+                        theme={theme}
+                    />
+                    {/* Floating Chat Button */}
+                    <button
+                        onClick={() => setIsChatOpen(true)}
+                        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-5 w-14 h-14 bg-[var(--accent)] text-white rounded-2xl flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--background-primary)] focus:ring-[var(--accent)] transition-all hover:opacity-90 active:scale-95 z-30 shadow-card"
+                        aria-label="Open AI Chat"
+                    >
+                        <ZapIcon className="h-6 w-6" />
+                    </button>
+                </>
             )}
-            {activePlan && <Navbar currentPage={currentPage} onNavigate={setCurrentPage} />}
         </>
       )}
 

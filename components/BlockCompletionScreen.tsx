@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircleIcon, TimerIcon } from './icons';
 import { WorkoutBlock } from '../types';
 
@@ -17,32 +18,34 @@ export default function BlockCompletionScreen({
   nextBlock,
   onContinue
 }: BlockCompletionScreenProps) {
+  const { t } = useTranslation();
+  
   return (
-    <div className="min-h-screen w-full max-w-2xl mx-auto flex flex-col items-center justify-center px-5 py-8 animate-scale-in">
+    <div className="min-h-screen w-full max-w-lg mx-auto flex flex-col items-center justify-center px-4 py-6 animate-scale-in">
       {/* Completion Icon */}
-      <div className="w-24 h-24 bg-[var(--accent)] rounded-full flex items-center justify-center mb-6 animate-pulse-subtle" style={{ boxShadow: 'var(--glow-red)' }}>
-        <CheckCircleIcon className="w-14 h-14 text-white" />
+      <div className="w-16 h-16 bg-[var(--accent)] rounded-full flex items-center justify-center mb-4 animate-pulse-subtle shadow-card">
+        <CheckCircleIcon className="w-8 h-8 text-white" />
       </div>
 
       {/* Title */}
-      <h2 className="font-syne text-3xl font-bold text-[var(--text-primary)] mb-2 text-center">
-        Block Complete!
+      <h2 className="text-xl font-bold text-[var(--text-primary)] mb-1.5 text-center">
+        {t('session.blockCompleteTitle')}
       </h2>
-      <p className="text-[14px] text-[var(--text-secondary)] mb-8 text-center">
-        {completedBlock.title || `Block ${blockNumber}`}
+      <p className="text-[13px] text-[var(--text-secondary)] mb-5 text-center">
+        {completedBlock.title || t('plan.block', { number: blockNumber })}
       </p>
 
       {/* Progress Dots */}
-      <div className="flex items-center gap-2 mb-8">
+      <div className="flex items-center gap-1.5 mb-5">
         {[...Array(totalBlocks)].map((_, i) => (
           <div
             key={i}
-            className={`h-2 rounded-full transition-all ${
+            className={`h-1.5 rounded-full transition-all ${
               i < blockNumber
-                ? 'w-8 bg-[var(--accent)]'
+                ? 'w-6 bg-[var(--accent)]'
                 : i === blockNumber
-                ? 'w-2 bg-[var(--accent)]'
-                : 'w-2 bg-[var(--surface-secondary)]'
+                ? 'w-1.5 bg-[var(--accent)]'
+                : 'w-1.5 bg-[var(--surface-secondary)]'
             }`}
           />
         ))}
@@ -50,23 +53,23 @@ export default function BlockCompletionScreen({
 
       {/* Next Block Preview */}
       {nextBlock ? (
-        <div className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 mb-8" style={{ boxShadow: 'var(--shadow-sm)' }}>
-          <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-2">
-            UP NEXT
+        <div className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 mb-5" style={{ boxShadow: 'var(--shadow-sm)' }}>
+          <p className="text-[9px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1.5">
+            {t('session.upNext')}
           </p>
-          <h3 className="font-syne text-xl font-bold text-[var(--text-primary)] mb-2">
-            {nextBlock.title || 'Next Block'}
+          <h3 className="text-base font-bold text-[var(--text-primary)] mb-1.5">
+            {nextBlock.title || t('session.nextBlockTitle')}
           </h3>
-          <p className="text-[13px] text-[var(--text-secondary)]">
-            {Array.isArray(nextBlock.exercises) ? nextBlock.exercises.length : 0} exercises
-            {nextBlock.type === 'superset' && ` · ${(nextBlock as any).rounds} rounds`}
-            {nextBlock.type === 'amrap' && ` · ${(nextBlock as any).duration_minutes} min AMRAP`}
+          <p className="text-[12px] text-[var(--text-secondary)]">
+            {Array.isArray(nextBlock.exercises) ? nextBlock.exercises.length : 0} {t('session.exercises')}
+            {nextBlock.type === 'superset' && ` · ${(nextBlock as any).rounds} ${t('session.rounds')}`}
+            {nextBlock.type === 'amrap' && ` · ${(nextBlock as any).duration_minutes} ${t('session.minAmrap')}`}
           </p>
         </div>
       ) : (
-        <div className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 mb-8" style={{ boxShadow: 'var(--shadow-sm)' }}>
-          <p className="text-[14px] text-[var(--text-secondary)] text-center">
-            You're on the final block! 🎯
+        <div className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 mb-5" style={{ boxShadow: 'var(--shadow-sm)' }}>
+          <p className="text-[13px] text-[var(--text-secondary)] text-center">
+            {t('session.finalBlock')}
           </p>
         </div>
       )}
@@ -74,11 +77,10 @@ export default function BlockCompletionScreen({
       {/* Continue Button */}
       <button
         onClick={onContinue}
-        className="w-full py-5 rounded-xl font-bold text-[18px] text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] active:scale-[0.98] transition-all"
-        style={{ boxShadow: 'var(--glow-red)', letterSpacing: '-0.01em' }}
+        className="w-full py-3 rounded-xl font-bold text-[13px] text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] active:scale-[0.98] transition-all shadow-card"
       >
-        <TimerIcon className="w-6 h-6 inline mr-2" />
-        {nextBlock ? 'Continue Workout' : 'Final Block - Let\'s Go!'}
+        <TimerIcon className="w-4 h-4 inline mr-2" />
+        {nextBlock ? t('session.continueWorkout') : t('session.finalBlockLetsGo')}
       </button>
     </div>
   );

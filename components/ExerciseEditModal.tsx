@@ -74,7 +74,7 @@ export default function ExerciseEditModal({ isOpen, onClose, onSave, exercise, i
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
       <div className="relative z-50 w-full max-w-lg flex flex-col bg-stone-900/80 border border-stone-700 backdrop-blur-xl rounded-2xl shadow-2xl max-h-[90vh]">
         <header className="flex items-center justify-between p-4 border-b border-stone-800">
-          <h2 className="font-syne text-lg font-bold text-white">{exercise ? 'Edit' : 'Add'} Exercise</h2>
+          <h2 className="text-lg font-bold text-white">{exercise ? 'Edit' : 'Add'} Exercise</h2>
           <button onClick={onClose} className="p-1 rounded-full text-stone-400 hover:bg-stone-800 hover:text-white">
             <XMarkIcon className="w-6 h-6" />
           </button>
@@ -82,7 +82,7 @@ export default function ExerciseEditModal({ isOpen, onClose, onSave, exercise, i
         
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="p-4 bg-stone-800/50 rounded-lg border border-stone-700">
-                <h3 className="font-syne text-base font-bold text-white mb-3">Core Details</h3>
+                <h3 className="text-base font-bold text-white mb-3">Core Details</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label className="text-xs font-semibold text-stone-400 uppercase tracking-wider">Exercise Name</label>
@@ -114,7 +114,7 @@ export default function ExerciseEditModal({ isOpen, onClose, onSave, exercise, i
             </div>
 
             <div className="p-4 bg-stone-800/50 rounded-lg border border-stone-700">
-                <h3 className="font-syne text-base font-bold text-white mb-3">Tracking Metrics</h3>
+                <h3 className="text-base font-bold text-white mb-3">Tracking Metrics</h3>
                 <div>
                     <label className="text-xs font-semibold text-stone-400 uppercase tracking-wider">Metric Type</label>
                     <select value={mt?.type || 'sets_reps_weight'} onChange={(e) => handleMetricTypeChange(e.target.value as MetricTemplate['type'])} className="w-full mt-1 p-2 bg-stone-900/70 border border-stone-700 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none">
