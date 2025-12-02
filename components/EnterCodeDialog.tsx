@@ -66,9 +66,9 @@ export default function EnterCodeDialog({ isOpen, onClose, onCodeEntered }: Ente
         <CardContent className="p-5">
           <form onSubmit={handleSubmit}>
             {/* Info */}
-            <div className="mb-4 p-3 bg-[var(--accent-light)] border border-[var(--accent)]/20 rounded-xl">
-              <p className="text-[12px] text-[var(--text-primary)] leading-relaxed">
-                💡 Enter the code your workout buddy shared with you to follow the same plan!
+            <div className="mb-4 p-3 bg-[var(--surface-secondary)] rounded-xl">
+              <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed">
+                Enter the code your workout buddy shared with you to follow the same plan.
               </p>
             </div>
 

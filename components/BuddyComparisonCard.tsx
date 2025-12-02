@@ -123,7 +123,7 @@ export default function BuddyComparisonCard({ userId, buddyId, buddyName = "Budd
                   <p className="text-[11px] text-[var(--text-tertiary)]">
                     {userAhead
                       ? `You're ahead by ${Math.abs(userTotal - buddyTotal).toFixed(1)}kg total volume`
-                      : `You're behind by ${Math.abs(userTotal - buddyTotal).toFixed(1)}kg - catch up! 💪`
+                      : `You're behind by ${Math.abs(userTotal - buddyTotal).toFixed(1)}kg`
                     }
                   </p>
                 </div>
@@ -132,7 +132,7 @@ export default function BuddyComparisonCard({ userId, buddyId, buddyName = "Budd
               {tied && (
                 <div className="mt-3 text-center">
                   <p className="text-[11px] font-bold text-[var(--primary)]">
-                    🤝 Perfectly tied!
+                    Perfectly tied
                   </p>
                 </div>
               )}

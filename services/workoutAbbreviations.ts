@@ -44,7 +44,7 @@ export const WORKOUT_ABBREVIATIONS = {
     "FS": "Front Squat",
     "BS": "Back Squat",
     "GS": "Goblet Squat",
-    "PS": "Pistol Squat",
+    "PISTSQ": "Pistol Squat",  // Changed from "PS" to avoid conflict with Power Snatch
     "BOS": "Box Squat",
     
     // Deadlifts
@@ -71,9 +71,7 @@ export const WORKOUT_ABBREVIATIONS = {
     "V-up": "V-ups",
     "ABMAT": "AbMat Sit-ups",
     
-    // Gymnastics
-    "BMU": "Bar Muscle-up",
-    "RMU": "Ring Muscle-up",
+    // Gymnastics (BMU and RMU already defined above)
     "RD": "Ring Dips",
     "BD": "Bar Dips",
     "RC": "Rope Climb",
@@ -98,7 +96,6 @@ export const WORKOUT_ABBREVIATIONS = {
     "MB": "Medicine Ball",
     "SB": "Slam Ball",
     "WB": "Wall Ball",
-    "AB": "Ab Mat",
     "ABMAT": "Ab Mat",
     "GHD": "Glute Ham Developer",
     "TRX": "Suspension Trainer",
@@ -106,7 +103,7 @@ export const WORKOUT_ABBREVIATIONS = {
     "PB": "Plyo Box",
     "BX": "Box",
     "RW": "Rower",
-    "AB": "Assault Bike",
+    "AB": "Assault Bike",  // Changed: removed "Ab Mat" duplicate, keeping Assault Bike
     "AAB": "Assault Air Bike",
     "SKI": "Ski Erg",
     "BIKE": "Bike Erg",

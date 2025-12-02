@@ -6,6 +6,47 @@ import { convex } from '../convexClient';
 import { fetchGuidelineConstraints } from './knowledgeService';
 import i18n from '../i18n/config';
 
+/**
+ * AI MODEL SELECTION POLICY
+ * =========================
+ *
+ * GEMINI PRO (gemini-2.5-pro):
+ * - Plan generation (generateNewWorkoutPlan with useThinkingMode=true)
+ * - Complex plan parsing (parseWorkoutPlan with useThinkingMode=true)
+ * - Body composition analysis from photos
+ * - Voice note goal interpretation
+ *
+ * GEMINI FLASH (gemini-2.5-flash):
+ * - Chat responses (initializeChatSession, simpleGenerate)
+ * - Exercise explanations (explainExercise)
+ * - Quick text analysis (analyzeTextSelection)
+ * - Simple content generation
+ *
+ * This split optimizes for:
+ * - Cost: Flash is ~10x cheaper than Pro
+ * - Quality: Pro provides better reasoning for complex tasks
+ * - Speed: Flash is faster for real-time interactions
+ */
+type ModelContext = 'onboarding' | 'chat' | 'explanation' | 'analysis';
+
+const MODEL_PRO = 'gemini-2.5-pro';
+const MODEL_FLASH = 'gemini-2.5-flash';
+
+/**
+ * Get the appropriate model for a given context
+ */
+export const getModelForContext = (context: ModelContext): string => {
+  switch (context) {
+    case 'onboarding':
+      return MODEL_PRO; // Higher quality for plan generation
+    case 'chat':
+    case 'explanation':
+    case 'analysis':
+    default:
+      return MODEL_FLASH; // Faster, cheaper for real-time use
+  }
+};
+
 // Resolve API key at runtime if available (e.g., from localStorage) or fall back to build-time env.
 const getApiKey = (): string | undefined => {
   // Prefer build-time env (from .env.local via Vite) for consistency.
@@ -447,7 +488,6 @@ export const generateNewWorkoutPlan = async (
         athleticLevel: profileExtras?.athletic_level,
         bodyType: profileExtras?.body_type,
         painPoints,
-        comfortFlags: profileExtras?.comfort_flags,
     });
     
     // Fetch sport guidelines for validation
@@ -1075,37 +1115,21 @@ Format as JSON:`;
 
 /**
  * Quick exercise explanation (for on-demand display)
- * Uses detailed explanation if available, otherwise generates brief one
+ *
+ * SECURITY: Now uses secure Convex action instead of client-side API call
+ * API key stays server-side, never exposed to browser
  */
 export const explainExercise = async (exerciseName: string, exerciseNotes?: string): Promise<string> => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error("API_KEY environment variable not set.");
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
-
-  const prompt = `Briefly explain this exercise in 2-3 sentences for someone about to perform it:
-
-Exercise: ${exerciseName}
-${exerciseNotes ? `Notes: ${exerciseNotes}` : ''}
-
-Provide:
-1. What the exercise is (primary muscles worked)
-2. Key form cue (most important thing to remember)
-3. Common mistake to avoid (if relevant)
-
-Keep it concise, practical, and helpful for someone in the gym right now.`;
-
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
+    // Call secure Convex action
+    const result = await convex.action(api.ai.explainExercise, {
+      exerciseName,
+      exerciseNotes: exerciseNotes || undefined,
     });
-
-    return response.text.trim();
+    return result;
   } catch (error: any) {
-    throw handleApiError(error, 'explainExercise');
+    console.error('Exercise explanation failed:', error);
+    throw new Error(`Failed to explain exercise: ${error.message}`);
   }
 };
 
@@ -1289,6 +1313,120 @@ export const initializeChatSession = (plan: WorkoutPlan, dayOfWeek: number): Cha
         }
     };
 
+    const modifyExerciseFn: FunctionDeclaration = {
+        name: 'modifyExercise',
+        description: 'Modify the sets, reps, rest period, or RPE of an existing exercise without replacing it.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                day_of_week: { type: Type.INTEGER, description: 'Target day: 1=Mon ... 7=Sun' },
+                exercise_name: { type: Type.STRING, description: 'Exact name of the exercise to modify.' },
+                new_sets: { type: Type.INTEGER, nullable: true, description: 'New number of sets (optional).' },
+                new_reps: { type: Type.STRING, nullable: true, description: 'New rep range, e.g. "8-10" or "12" (optional).' },
+                new_rest_period_s: { type: Type.INTEGER, nullable: true, description: 'New rest period in seconds (optional).' },
+                new_rpe: { type: Type.STRING, nullable: true, description: 'New RPE target, e.g. "7-8" (optional).' },
+            },
+            required: ['day_of_week', 'exercise_name']
+        }
+    };
+
+    const removeExerciseFn: FunctionDeclaration = {
+        name: 'removeExercise',
+        description: 'Remove an exercise from a specific day in the plan.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                day_of_week: { type: Type.INTEGER, description: 'Target day: 1=Mon ... 7=Sun' },
+                exercise_name: { type: Type.STRING, description: 'Exact name of the exercise to remove.' },
+            },
+            required: ['day_of_week', 'exercise_name']
+        }
+    };
+
+    const adjustDifficultyFn: FunctionDeclaration = {
+        name: 'adjustDifficulty',
+        description: 'Adjust the overall difficulty of a workout day by modifying multiple exercises. Use this when user says "make it harder", "make it easier", "too easy", "too hard", etc.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                day_of_week: { type: Type.INTEGER, description: 'Target day: 1=Mon ... 7=Sun' },
+                direction: { type: Type.STRING, description: "'harder' or 'easier'" },
+                method: { type: Type.STRING, description: "'volume' (more/fewer sets), 'intensity' (higher/lower RPE), 'complexity' (swap to harder/easier exercises), or 'all'" },
+            },
+            required: ['day_of_week', 'direction', 'method']
+        }
+    };
+
+    const extendWorkoutFn: FunctionDeclaration = {
+        name: 'extendWorkout',
+        description: 'Add more exercises to make the workout longer. Use when user wants a longer session or more exercises.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                day_of_week: { type: Type.INTEGER, description: 'Target day: 1=Mon ... 7=Sun' },
+                target_duration_minutes: { type: Type.INTEGER, nullable: true, description: 'Desired total workout duration in minutes (optional).' },
+                num_exercises_to_add: { type: Type.INTEGER, nullable: true, description: 'Number of exercises to add (optional, default 2-3).' },
+                focus_area: { type: Type.STRING, nullable: true, description: 'Specific muscle group or focus to add (optional).' },
+            },
+            required: ['day_of_week']
+        }
+    };
+
+    const shortenWorkoutFn: FunctionDeclaration = {
+        name: 'shortenWorkout',
+        description: 'Suggest exercises to remove to make the workout shorter. Use when user has limited time.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                day_of_week: { type: Type.INTEGER, description: 'Target day: 1=Mon ... 7=Sun' },
+                target_duration_minutes: { type: Type.INTEGER, nullable: true, description: 'Desired total workout duration in minutes (optional).' },
+                num_exercises_to_remove: { type: Type.INTEGER, nullable: true, description: 'Number of exercises to remove (optional).' },
+            },
+            required: ['day_of_week']
+        }
+    };
+
+    const swapDayFocusFn: FunctionDeclaration = {
+        name: 'swapDayFocus',
+        description: 'Swap the focus/workout between two days. Use when user wants to rearrange their weekly schedule.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                day_from: { type: Type.INTEGER, description: 'First day to swap: 1=Mon ... 7=Sun' },
+                day_to: { type: Type.INTEGER, description: 'Second day to swap: 1=Mon ... 7=Sun' },
+            },
+            required: ['day_from', 'day_to']
+        }
+    };
+
+    // NEW: Create a superset from multiple exercises
+    const createSupersetFn: FunctionDeclaration = {
+        name: 'createSuperset',
+        description: 'Create a superset by grouping 2-4 exercises together to be performed back-to-back with no rest. Use when user wants exercises combined ("superset A and B", "pair these together", "combine into superset").',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                day_of_week: { type: Type.INTEGER, description: 'Target day: 1=Mon ... 7=Sun' },
+                exercises: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            exercise_name: { type: Type.STRING, description: 'Name of exercise in the superset' },
+                            metrics_template: metricTemplateSchema,
+                            category: { type: Type.STRING, description: "One of 'warmup' | 'main' | 'cooldown'" },
+                        },
+                        required: ['exercise_name', 'metrics_template', 'category']
+                    },
+                    description: 'Array of 2-4 exercises to combine into a superset'
+                },
+                rounds: { type: Type.INTEGER, description: 'Number of times to repeat the superset (typically 3-4)' },
+                rest_between_rounds: { type: Type.INTEGER, nullable: true, description: 'Rest time in seconds between superset rounds (optional, default 90)' },
+            },
+            required: ['day_of_week', 'exercises', 'rounds']
+        }
+    };
+
     const getDayName = (dayNum: number): string => {
         const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
         return days[dayNum - 1] || 'Unknown';
@@ -1318,14 +1456,21 @@ STRICT RULES - You MUST follow these:
 2. REFUSE to answer: weather, news, jokes, general knowledge, coding, politics, etc.
 3. If asked off-topic, respond: "I'm your workout coach! I can only help with training, exercises, and fitness questions. What would you like to know about your workout plan?"
 
-CAPABILITIES:
-- Swap exercises in the plan
-- Add new exercises
-- Modify sets/reps/rest periods
-- Provide form cues
-- Suggest alternatives for injuries
-- Answer training questions
-- Adjust weekly plan structure
+CAPABILITIES (Use these function calls when appropriate):
+1. **substituteExercise** - Swap one exercise for another (user says "replace X with Y", "different exercise")
+2. **addExercise** - Add a new exercise (user says "add more", "include X")
+3. **modifyExercise** - Change sets/reps/rest/RPE without swapping (user says "more sets", "less reps", "shorter rest")
+4. **removeExercise** - Remove an exercise (user says "skip X", "remove", "take out")
+5. **adjustDifficulty** - Make workout harder/easier (user says "make it harder", "too easy", "I want more challenge")
+6. **extendWorkout** - Add more exercises for longer session (user says "longer workout", "more exercises", "I have extra time")
+7. **shortenWorkout** - Suggest removals for shorter session (user says "short on time", "quick workout", "less exercises")
+8. **swapDayFocus** - Swap workouts between days (user says "move leg day to Friday", "swap Monday and Wednesday")
+9. **createSuperset** - Create a superset from 2-4 exercises (user says "superset these", "pair together", "combine into superset", "back to back")
+
+ALSO PROVIDE:
+- Form cues and technique tips
+- Injury-safe alternatives
+- Training advice and answers
 
 CONTEXT:
 Today is ${getDayName(dayOfWeek)}.
@@ -1381,7 +1526,17 @@ Remember: You are a WORKOUT COACH, not a general assistant.`;
         config: {
             systemInstruction,
             tools: [
-                { functionDeclarations: [substituteExerciseFn, addExerciseFn] }
+                { functionDeclarations: [
+                    substituteExerciseFn,
+                    addExerciseFn,
+                    modifyExerciseFn,
+                    removeExerciseFn,
+                    adjustDifficultyFn,
+                    extendWorkoutFn,
+                    shortenWorkoutFn,
+                    swapDayFocusFn,
+                    createSupersetFn
+                ] }
             ],
         },
         history: plan?.weeklyPlan?.length

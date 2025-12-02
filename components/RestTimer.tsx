@@ -80,12 +80,9 @@ export default function RestTimer({ duration, onComplete, onFinish, onSkip, time
   const strokeDashoffset = circumference - progress * circumference;
 
   return (
-    <div className="bg-[var(--surface)] border border-[var(--border-card)] rounded-3xl p-6 sm:p-8 animate-scale-in shadow-elevated">
-      {/* Timer circle with gradient and glow */}
+    <div className="bg-[var(--surface)] border border-[var(--border-card)] rounded-3xl p-6 sm:p-8 animate-scale-in shadow-lg">
+      {/* Timer circle */}
       <div className="relative w-full max-w-[240px] aspect-square mx-auto mb-6">
-        {/* Outer glow ring */}
-        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] opacity-20 blur-xl animate-pulse-subtle"></div>
-
         {/* SVG timer with gradient */}
         <svg className="relative w-full h-full transform -rotate-90" viewBox="0 0 100 100">
           {/* Background circle */}
@@ -164,7 +161,7 @@ export default function RestTimer({ duration, onComplete, onFinish, onSkip, time
 
         <button
           onClick={handleSkip}
-          className="flex-[2] flex items-center justify-center gap-2 h-12 px-5 bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white text-[14px] font-bold rounded-xl hover:shadow-lg hover:scale-105 transition-all active:scale-95 shadow-md"
+          className="flex-[2] flex items-center justify-center gap-2 h-12 px-5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-[14px] font-bold rounded-xl transition-all duration-200 active:scale-[0.98] shadow-sm hover:shadow-md"
         >
           {t('session.skip')}
           <ForwardIcon className="w-4 h-4" />

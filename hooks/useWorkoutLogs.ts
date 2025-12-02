@@ -32,7 +32,7 @@ export default function useWorkoutLogs() {
     };
 
     // Convert Convex logs to WorkoutLog format
-    const formattedLogs: WorkoutLog[] = logs ? logs.map(log => ({
+    const formattedLogs: WorkoutLog[] = logs && Array.isArray(logs) ? logs.map(log => ({
         id: log._id,
         date: log.date,
         focus: log.focus,

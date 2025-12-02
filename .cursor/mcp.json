@@ -2,6 +2,10 @@
   "mcpServers": {
     "shadcn": {
       "url": "https://www.shadcn.io/api/mcp"
+    },
+    "convex": {
+      "command": "npx",
+      "args": ["-y", "convex@latest", "mcp", "start"]
     }
   }
 }

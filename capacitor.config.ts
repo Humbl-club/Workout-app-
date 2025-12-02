@@ -26,9 +26,9 @@ const config: CapacitorConfig = {
     },
   },
   server: {
-    // For development - allows loading from Vite dev server
-    // url: 'http://localhost:3000',
-    // cleartext: true,
+    // For development - load from Vite dev server
+    url: 'http://localhost:3000',
+    cleartext: true,
   },
 };
 

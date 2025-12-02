@@ -86,7 +86,7 @@ export default function WorkoutBlockDisplay({ block, blockIndex, onExerciseClick
   };
 
   const getBlockBadges = () => {
-    const badges: JSX.Element[] = [];
+    const badges: React.ReactNode[] = [];
     const characteristics = detectBlockCharacteristics();
     
     // Block type badges
@@ -146,25 +146,33 @@ export default function WorkoutBlockDisplay({ block, blockIndex, onExerciseClick
         break;
         
       case 'sets_duration':
-        displayText = metrics.target_duration_s ? `${metrics.target_duration_s}s` : '';
+        // Handle both field naming conventions
+        const durationSec = metrics.target_duration_s || metrics.duration_seconds;
+        displayText = durationSec ? `${durationSec}s` : '';
         if (metrics.target_sets && metrics.target_sets > 1) {
           displayText = `${metrics.target_sets} × ${displayText}`;
         }
         break;
-        
+
       case 'duration_only':
-        displayText = metrics.target_duration_s ? `${metrics.target_duration_s}s` : '';
-        if (metrics.target_duration_minutes) {
-          displayText = `${metrics.target_duration_minutes} min`;
+        // Handle both field naming conventions
+        const durationMin = metrics.target_duration_minutes || metrics.duration_minutes;
+        if (durationMin) {
+          displayText = `${durationMin} min`;
+        } else if (metrics.target_duration_s) {
+          displayText = `${metrics.target_duration_s}s`;
         }
         break;
-        
+
       case 'distance_time':
         displayText = '';
-        if (metrics.target_distance_km) {
-          displayText = `${metrics.target_distance_km}km`;
-        } else if (metrics.target_distance_m) {
-          displayText = `${metrics.target_distance_m}m`;
+        // Handle both field naming conventions
+        const distKm = metrics.target_distance_km || metrics.distance_km;
+        const distM = metrics.target_distance_m || metrics.distance_m;
+        if (distKm) {
+          displayText = `${distKm}km`;
+        } else if (distM) {
+          displayText = `${distM}m`;
         }
         break;
     }
@@ -216,7 +224,7 @@ export default function WorkoutBlockDisplay({ block, blockIndex, onExerciseClick
       
       <CardContent>
         <div className="space-y-3">
-          {block.exercises.map((exercise, idx) => (
+          {(block.exercises || []).map((exercise, idx) => (
             <div
               key={idx}
               className={`p-3 bg-stone-800/50 rounded-lg border border-stone-700 hover:border-stone-600 transition cursor-pointer ${
@@ -265,18 +273,19 @@ export default function WorkoutBlockDisplay({ block, blockIndex, onExerciseClick
           ))}
         </div>
         
-        {/* Special instructions for block types */}
+        {/* Special instructions for block types - using design system colors */}
         {block.type === 'amrap' && block.duration_minutes && (
-          <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-            <p className="text-sm text-red-300">
+          <div className="mt-4 p-3 bg-[var(--warning-light)] border border-[var(--warning)]/30 rounded-lg">
+            <p className="text-sm text-[var(--warning)] font-medium flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-[var(--warning)] animate-pulse" />
               Complete as many rounds as possible in {block.duration_minutes} minutes
             </p>
           </div>
         )}
-        
+
         {block.type === 'superset' && block.rounds && (
-          <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-            <p className="text-sm text-blue-300">
+          <div className="mt-4 p-3 bg-[var(--primary-light)] border border-[var(--primary)]/30 rounded-lg">
+            <p className="text-sm text-[var(--primary)] font-medium">
               Complete all exercises in sequence, then rest. Repeat for {block.rounds} total rounds.
             </p>
           </div>

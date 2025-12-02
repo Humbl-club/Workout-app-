@@ -108,16 +108,16 @@ export default function PhotoTimeline({ userId, onPhotoClick }: PhotoTimelinePro
       {/* Photo Grid */}
       {!isLoading && filteredPhotos.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {filteredPhotos.map((photo) => (
-            <ProgressPhotoCard
-              key={photo._id}
-              photoUrl={photo.photoUrl}
-              photoType={photo.photoType}
-              date={photo.date}
-              aiAnalysis={photo.aiAnalysis}
-              onClick={() => onPhotoClick?.(photo._id)}
-            />
-          ))}
+          {filteredPhotos.map((photo) => {
+            const cardProps = {
+              photoUrl: photo.photoUrl,
+              photoType: photo.photoType,
+              date: photo.date,
+              aiAnalysis: photo.aiAnalysis,
+              onClick: () => onPhotoClick?.(photo._id),
+            };
+            return <ProgressPhotoCard key={photo._id} {...cardProps} />;
+          })}
         </div>
       )}
 

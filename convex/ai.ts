@@ -2,14 +2,376 @@
  * Convex AI Actions - Server-side Gemini API calls
  *
  * SECURITY: API keys are kept server-side only, never exposed to client
+ *
+ * Model Selection:
+ * - gemini-2.5-pro: Complex plan generation (higher quality, slower)
+ * - gemini-2.5-flash: Quick responses, exercise explanations (faster, cheaper)
  */
 
 import { action } from "./_generated/server";
 import { v } from "convex/values";
+import { api } from "./_generated/api";
+import { loggers } from "./utils/logger";
+import { formatSportPrompt } from "./sportData";
+import { formatSupplementPrompt } from "./supplementData";
+import {
+  extractAndParseJSON,
+  generateWithRetry,
+  addDurationEstimates,
+  getHeartRateGuidance,
+  getDurationConstraintPrompt
+} from "./utils/aiHelpers";
+import {
+  getCompleteSchemaPrompt,
+  getSessionLengthGuidance,
+  SESSION_DURATION_RULES,
+  type SessionLength,
+  TWO_A_DAY_PROMPT,
+  PERIODIZATION_PROMPT,
+  detectTwoADayFormat,
+  TWO_A_DAY_PATTERNS,
+} from "./planSchema";
+import {
+  getMetricsTemplatePrompt,
+  getTerminologyPrompt,
+  METRICS_TEMPLATES,
+} from "./metricsTemplateReference";
+import { getExamplePlansPrompt } from "./planExamples";
+import { validateWorkoutPlan, validateAndExplain } from "./planValidator";
+
+// Type for cardio preferences
+interface CardioPreferences {
+  preferred_types: string[];
+  favorite_exercise?: string;
+  cardio_duration_minutes?: number;
+  outdoor_preferred?: boolean;
+}
+
+// Type for training split
+interface TrainingSplit {
+  sessions_per_day: '1' | '2';
+  training_type: 'strength_only' | 'strength_plus_cardio' | 'combined' | 'cardio_focused';
+  cardio_preferences?: CardioPreferences;
+}
+
+/**
+ * Get optimal cardio duration based on user's goal when they haven't specified a preference.
+ * User preferences (cardio_duration_minutes) ALWAYS take priority over these defaults.
+ */
+function getCardioDurationForGoal(goal: string): { duration: number; rationale: string } {
+  const goalDurations: Record<string, { duration: number; rationale: string }> = {
+    // Fat loss requires longer, steady-state cardio for maximum fat oxidation
+    'fat_loss': { duration: 45, rationale: 'Fat loss: 45+ min Zone 2 cardio maximizes fat oxidation' },
+    'weight_loss': { duration: 45, rationale: 'Weight loss: 45+ min steady state cardio for calorie burn' },
+    'lose_weight': { duration: 45, rationale: 'Weight loss: 45+ min steady state cardio for calorie burn' },
+
+    // Aesthetic goals need moderate cardio to preserve muscle
+    'aesthetic': { duration: 30, rationale: 'Aesthetic: 30 min cardio preserves muscle while burning fat' },
+    'body_composition': { duration: 30, rationale: 'Body recomp: 30 min cardio balances muscle preservation' },
+
+    // Endurance sports need longer sessions
+    'endurance': { duration: 60, rationale: 'Endurance: 60+ min builds aerobic base' },
+    'marathon': { duration: 60, rationale: 'Marathon training: 60+ min for aerobic development' },
+    'triathlon': { duration: 60, rationale: 'Triathlon training: 60+ min multi-sport conditioning' },
+    'hyrox': { duration: 45, rationale: 'Hyrox: 45 min mixed modal conditioning' },
+
+    // Strength goals: minimal cardio, just for health
+    'strength': { duration: 20, rationale: 'Strength focus: 20 min cardio for heart health without interfering with gains' },
+    'powerlifting': { duration: 20, rationale: 'Powerlifting: 20 min light cardio for recovery' },
+
+    // General fitness: moderate
+    'general_fitness': { duration: 30, rationale: 'General fitness: 30 min balanced cardio' },
+    'health': { duration: 30, rationale: 'General health: 30 min cardio meets health guidelines' },
+  };
+
+  // Match goal (case-insensitive, partial match)
+  const normalizedGoal = goal.toLowerCase().replace(/[^a-z]/g, '_');
+
+  for (const [key, value] of Object.entries(goalDurations)) {
+    if (normalizedGoal.includes(key) || key.includes(normalizedGoal)) {
+      return value;
+    }
+  }
+
+  // Default for unrecognized goals
+  return { duration: 30, rationale: 'Standard: 30 min cardio session' };
+}
+
+// Type for specific goal
+interface SpecificGoal {
+  event_type?: string | null;
+  event_name?: string | null;
+  target_date?: string | null;
+  current_readiness?: number | null;
+  description?: string | null;
+}
+
+/**
+ * Format training split prompt for 2x daily training
+ * @param split - Training split configuration
+ * @param primaryGoal - User's primary training goal (used to determine cardio duration if not specified)
+ */
+function formatTrainingSplitPrompt(split?: TrainingSplit, primaryGoal?: string): string {
+  if (!split || split.sessions_per_day === '1') return '';
+
+  const trainingTypeDescriptions: Record<string, string> = {
+    'strength_only': 'Both sessions focus on strength training. AM = Heavy compounds, PM = Accessory/isolation work.',
+    'strength_plus_cardio': 'AM = Cardio/conditioning, PM = Strength training.',
+    'combined': 'Each session combines strength and cardio elements.',
+    'cardio_focused': 'Primary focus on cardio/endurance with supplemental strength work.',
+  };
+
+  // Build personalized cardio guidance based on user preferences
+  const cardioPrefs = split.cardio_preferences;
+
+  // CARDIO DURATION LOGIC:
+  // 1. User's explicit preference takes priority
+  // 2. Otherwise, determine based on primary goal
+  const goalBasedCardio = getCardioDurationForGoal(primaryGoal || 'general_fitness');
+  const cardioDuration = cardioPrefs?.cardio_duration_minutes || goalBasedCardio.duration;
+  const cardioDurationRationale = cardioPrefs?.cardio_duration_minutes
+    ? `User preference: ${cardioDuration} min cardio`
+    : goalBasedCardio.rationale;
+
+  const preferredTypes = cardioPrefs?.preferred_types || [];
+  const favoriteCardio = cardioPrefs?.favorite_exercise;
+
+  // Map preferred types to exercise names
+  const cardioExerciseMap: Record<string, string> = {
+    'running': 'Treadmill Run',
+    'incline_walk': 'Incline Treadmill Walk',
+    'cycling': 'Stationary Bike',
+    'rowing': 'Rowing Machine',
+    'swimming': 'Swimming',
+    'elliptical': 'Elliptical Trainer',
+    'stair_climber': 'StairMaster',
+    'jump_rope': 'Jump Rope',
+    'hiking': 'Outdoor Hike',
+  };
+
+  // Get preferred exercises or default list
+  const userCardioExercises = preferredTypes.length > 0
+    ? preferredTypes.map(t => cardioExerciseMap[t] || t).join(', ')
+    : 'Treadmill Run, Stationary Bike, Rowing Machine, Elliptical';
+
+  const favoriteExercise = favoriteCardio
+    ? cardioExerciseMap[favoriteCardio] || favoriteCardio
+    : null;
+
+  // Enhanced cardio guidance for training types that include cardio
+  const needsCardioGuidance = split.training_type === 'strength_plus_cardio' ||
+                              split.training_type === 'combined' ||
+                              split.training_type === 'cardio_focused';
+
+  const cardioGuidance = needsCardioGuidance ? `
+
+**CARDIO SESSION PREFERENCES (PERSONALIZED)**
+User's preferred cardio exercises: ${userCardioExercises}
+${favoriteExercise ? `User's FAVORITE cardio: ${favoriteExercise} (use this most often)` : ''}
+
+**CARDIO DURATION: ${cardioDuration} MINUTES** (${cardioDurationRationale})
+NOTE: Cardio duration is SEPARATE from strength session length.
+
+MANDATORY: Use the user's preferred cardio types. Duration must be ${cardioDuration} minutes minimum.
+
+CARDIO METRICS - USE "duration_only" for cardio:
+{
+  "exercise_name": "${favoriteExercise || 'Treadmill Run'}",
+  "category": "main",
+  "metrics_template": {
+    "type": "duration_only",
+    "target_duration_minutes": ${cardioDuration}
+  },
+  "rpe": "6-7",
+  "notes": "Zone 2 cardio - ${cardioDuration} minutes"
+}
+
+COMPLETE AM CARDIO SESSION EXAMPLE:
+{
+  "session_name": "AM Cardio",
+  "time_of_day": "morning",
+  "estimated_duration": ${cardioDuration + 10},
+  "blocks": [{
+    "type": "single",
+    "exercises": [{
+      "exercise_name": "${favoriteExercise || 'Treadmill Run'}",
+      "category": "main",
+      "metrics_template": { "type": "duration_only", "target_duration_minutes": ${cardioDuration} },
+      "rpe": "6",
+      "notes": "Steady state Zone 2 cardio"
+    }]
+  }]
+}
+
+IMPORTANT:
+- Cardio sessions MUST be at least ${cardioDuration} minutes
+- Use "duration_only" metrics type with "target_duration_minutes" for all cardio
+- Prioritize user's preferred cardio: ${userCardioExercises}
+` : '';
+
+  return `
+**2x DAILY TRAINING - MANDATORY STRUCTURE**
+The user trains TWICE per day. You MUST output "sessions" array instead of "blocks" for each training day.
+
+Training Type: ${split.training_type}
+Split Strategy: ${trainingTypeDescriptions[split.training_type] || 'Balanced AM/PM split'}
+${cardioGuidance}
+
+${TWO_A_DAY_PROMPT}
+
+CRITICAL: Each day MUST have a "sessions" array with 2 session objects (morning and evening).
+Do NOT use "blocks" directly on the day - use "sessions" with nested "blocks" inside each session.
+`;
+}
+
+/**
+ * Format periodization prompt for goal-based training
+ */
+function formatPeriodizationPrompt(goal?: SpecificGoal): string {
+  if (!goal?.target_date) return '';
+
+  const targetDate = new Date(goal.target_date);
+  const now = new Date();
+  const weeksUntil = Math.ceil((targetDate.getTime() - now.getTime()) / (7 * 24 * 60 * 60 * 1000));
+
+  if (weeksUntil <= 0) return ''; // Target date has passed
+
+  // Calculate phase distribution
+  const baseWeeks = Math.floor(weeksUntil * 0.35);
+  const buildWeeks = Math.floor(weeksUntil * 0.35);
+  const peakWeeks = Math.floor(weeksUntil * 0.15);
+  const taperWeeks = weeksUntil - baseWeeks - buildWeeks - peakWeeks;
+
+  // Determine current phase (week 1 is always BASE)
+  const currentPhase = 'base';
+  const phaseEndWeek = baseWeeks;
+
+  return `
+**PERIODIZATION - TARGET DATE: ${goal.target_date}**
+${goal.event_type ? `Event: ${goal.event_type}${goal.event_name ? ` (${goal.event_name})` : ''}` : ''}
+${goal.description ? `Goal Description: ${goal.description}` : ''}
+${goal.current_readiness ? `Current Readiness: ${goal.current_readiness}/10` : ''}
+
+Total Weeks Until Event: ${weeksUntil}
+Phase Distribution:
+- BASE Phase: Weeks 1-${baseWeeks} (${baseWeeks} weeks) - Build foundation, moderate intensity
+- BUILD Phase: Weeks ${baseWeeks + 1}-${baseWeeks + buildWeeks} (${buildWeeks} weeks) - Sport-specific, progressive overload
+- PEAK Phase: Weeks ${baseWeeks + buildWeeks + 1}-${baseWeeks + buildWeeks + peakWeeks} (${peakWeeks} weeks) - High intensity, competition simulation
+- TAPER Phase: Weeks ${baseWeeks + buildWeeks + peakWeeks + 1}-${weeksUntil} (${taperWeeks} weeks) - Recovery, maintain sharpness
+
+CURRENT PHASE: ${currentPhase.toUpperCase()} (Week 1 of ${phaseEndWeek})
+
+${PERIODIZATION_PROMPT}
+
+Include "periodization" object in your output:
+{
+  "periodization": {
+    "total_weeks": ${weeksUntil},
+    "current_week": 1,
+    "phase": "${currentPhase}",
+    "phase_description": "Building aerobic foundation and movement proficiency",
+    "weeks_in_phase": ${phaseEndWeek},
+    "phase_end_week": ${phaseEndWeek}
+  }
+}
+`;
+}
+
+/**
+ * Cardio parsing patterns for detecting running, cycling, and other cardio exercises
+ */
+export const CARDIO_PARSING_RULES = `
+**CARDIO EXERCISE PARSING RULES:**
+When you encounter cardio exercises, use the appropriate metrics_template:
+
+1. Duration-based cardio (steady state):
+   - "90 min run" → { "type": "duration_only", "target_duration_minutes": 90 }
+   - "Long Run" → { "type": "duration_only", "target_duration_minutes": 60 }
+   - "Easy Run" → { "type": "duration_only", "target_duration_minutes": 30 }
+   - "Incline Walk" → { "type": "duration_only", "target_duration_minutes": 30 }
+   - "45 min bike" → { "type": "duration_only", "target_duration_minutes": 45 }
+
+2. Distance-based cardio:
+   - "5km run" → { "type": "distance_time", "target_distance_km": 5 }
+   - "1000m row" → { "type": "distance_time", "target_distance_m": 1000 }
+   - "2km swim" → { "type": "distance_time", "target_distance_km": 2 }
+
+3. **INTERVAL CARDIO (CRITICAL - ALWAYS SPECIFY SETS/ROUNDS):**
+   Time-based intervals MUST include sets and work/rest durations:
+   - "Rowing Intervals" → { "type": "sets_duration_rest", "target_sets": 8, "work_duration_s": 20, "rest_duration_s": 40 }
+   - "Bike Sprints" → { "type": "sets_duration_rest", "target_sets": 10, "work_duration_s": 30, "rest_duration_s": 30 }
+   - "Treadmill HIIT" → { "type": "sets_duration_rest", "target_sets": 6, "work_duration_s": 60, "rest_duration_s": 90 }
+
+   Distance-based intervals:
+   - "8x400m" → { "type": "sets_distance_rest", "target_sets": 8, "distance_m": 400, "rest_s": 90 }
+   - "6x800m" → { "type": "sets_distance_rest", "target_sets": 6, "distance_m": 800, "rest_s": 120 }
+
+   **NEVER create intervals without specifying how many rounds/sets!**
+   Total workout time = sets × (work + rest). Example: 8 × (20s + 40s) = 8 min
+
+4. Machine cardio (SkiErg, Rower):
+   - "1000m SkiErg" → { "type": "distance_time", "target_distance_m": 1000 }
+   - "2000m row" → { "type": "distance_time", "target_distance_m": 2000 }
+
+5. Low-impact options (great for all fitness levels):
+   - "Incline Treadmill Walk" - 10-15% incline, 3-4 mph, Zone 2 cardio
+   - Excellent for fat burning, easy on joints, high calorie burn
+
+IMPORTANT: Cardio exercises should have category "main" unless they are warm-up jogs (then "warmup").
+`;
+
+/**
+ * Exercise selection hierarchy prompt for AI plan generation
+ * Guides AI to select exercises based on role classification
+ */
+export function getExerciseSelectionHierarchyPrompt(sport?: string, goal?: string): string {
+  const sportSpecific = sport && sport !== 'general_fitness' && sport !== 'none';
+
+  return `
+**EXERCISE SELECTION HIERARCHY:**
+Use this hierarchy when selecting exercises for each session:
+
+1. **CORE exercises (2-3 per session)** - Foundation movements
+   Examples: Squat, Bench Press, Deadlift, Row, Overhead Press, Pull-up, Hip Thrust
+   These are the primary strength builders and should anchor the workout.
+
+2. **ACCESSORY exercises (2-4 per session)** - Support and balance
+   Examples: DB Fly, Leg Curl, Lat Pulldown, Face Pull, Tricep Extension
+   These address weak points and support the core lifts.
+
+3. **COMPLEMENTARY exercises (1-3 if sport-specific)** - Goal-aligned
+   Examples: Sled Push (Hyrox), Box Jump (Athletic), Medicine Ball (Rotation sports)
+   ${sportSpecific ? `For ${sport} training, include sport-specific movements.` : 'Include if user has a specific sport or athletic goal.'}
+
+4. **ISOLATION exercises (0-2 per session)** - Finishers only
+   Examples: Bicep Curl, Lateral Raise, Calf Raise
+   Only include as finishing touches, not as main workout components.
+
+5. **CARDIO exercises (as needed)** - Based on goal and sport
+   ${sportSpecific && ['marathon', 'hyrox', 'triathlon', 'running'].includes(sport.toLowerCase())
+     ? `For ${sport}, include specific cardio work: Long Run, Tempo Run, Intervals, etc.`
+     : 'Include conditioning work appropriate for the user goal.'}
+   Use appropriate metrics (duration_only, distance_time, or sets_distance_rest).
+
+6. **MOBILITY exercises (warmup/cooldown)** - Movement prep and recovery
+   Examples: Cat-Cow, Hip 90/90, Shoulder CARs, World's Greatest Stretch
+   Include 5-7 in warmup and 2-4 in cooldown.
+
+**SELECTION RULES:**
+- Start with CORE exercises for the day's focus
+- Add ACCESSORY exercises to support the core lifts
+- Include COMPLEMENTARY exercises only for sport-specific needs
+- ISOLATION exercises should be used sparingly (arms, calves)
+- NEVER create a session with only isolation exercises
+- Match the exercise tier (S/A/B/C) to the user's experience level
+`;
+}
 
 /**
  * Parse a text workout plan into structured JSON
  * Server-side action to keep API key secure
+ *
+ * Uses Pro model with thinking for intelligent parsing of ANY format
  */
 export const parseWorkoutPlan = action({
   args: {
@@ -20,36 +382,68 @@ export const parseWorkoutPlan = action({
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      throw new Error("Gemini API key not configured");
+      throw new Error("Gemini API key not configured. Set GEMINI_API_KEY in Convex environment variables.");
     }
 
+    // Rate limiting
+    const { checkRateLimit } = await import("./rateLimiter");
+    checkRateLimit(args.userId, "parseWorkoutPlan");
+
     // Dynamic import to avoid bundling issues
-    const { GoogleGenerativeAI } = await import("@google/genai");
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey });
 
-    const systemPrompt = `You are a workout plan parser. Parse the user's workout plan text into a structured JSON format.
+    const systemPrompt = `You are an ELITE workout plan parser. Your job is to intelligently analyze ANY workout plan format and convert it into structured JSON.
 
-Output JSON schema:
+**YOUR SUPERPOWER: You can parse ANY format:**
+- Simple text lists: "Monday: Bench press 3x10, Rows 3x12"
+- Markdown tables with complex formatting
+- Coach's notes with abbreviations (A1/A2 supersets, EMOM, AMRAP, etc.)
+- Screenshots transcribed as text
+- PDF exports from other apps
+- Handwritten notes transcribed
+- Programs from fitness influencers
+- Scientific periodization programs
+- CrossFit WODs
+- Powerlifting programs (5/3/1, GZCL, etc.)
+- Bodybuilding splits (PPL, Bro splits, etc.)
+- ANY language or format - just figure it out!
+
+**CRITICAL RULES:**
+1. EVERY exercise MUST have "category": "warmup" | "main" | "cooldown"
+2. If the plan doesn't specify days, create a logical week structure
+3. If it's a single workout, put it on Day 1 and mark other days as rest
+4. NEVER return empty blocks unless explicitly a rest day
+5. Infer reasonable sets/reps if not specified (e.g., "Bench press" → 3 sets, 8-10 reps)
+6. Parse abbreviations: DB=Dumbbell, BB=Barbell, KB=Kettlebell, BW=Bodyweight
+7. Recognize supersets (A1/A2), circuits, AMRAPs, EMOMs
+8. **EXERCISE INFERENCE RULES:**
+   - If user lists specific exercises → parse exactly what they wrote, don't add extras
+   - If user gives only muscle groups (e.g., "chest day", "leg day") → create 3-4 basic exercises for that muscle group
+   - If user is vague (e.g., "whatever") → create a simple full-body routine
+   - NEVER add warmups/cooldowns unless user mentions them
+9. Mark ALL exercises as "main" category unless clearly warmup/cooldown
+
+**OUTPUT JSON SCHEMA:**
 {
-  "name": "Plan Name",
+  "name": "Plan Name (infer from content or use 'Imported Plan')",
   "weeklyPlan": [
     {
       "day_of_week": 1-7 (1=Monday, 7=Sunday),
-      "focus": "Workout focus (e.g., 'Upper Body', 'Rest')",
-      "notes": "Optional notes",
+      "focus": "Day focus (e.g., 'Upper Body', 'Pull Day', 'Rest')",
+      "notes": "Any day-level notes",
       "blocks": [
         {
           "type": "single" | "superset" | "amrap",
           "title": "Optional block title",
-          "rounds": number (for supersets),
-          "duration_minutes": number (for AMRAPs),
+          "rounds": 3 (for supersets - how many times to repeat),
+          "duration_minutes": 10 (for AMRAPs),
           "exercises": [
             {
-              "exercise_name": "Exercise name",
+              "exercise_name": "Full exercise name",
               "category": "warmup" | "main" | "cooldown",
-              "notes": "Optional notes",
-              "rpe": "6-7" (optional),
+              "notes": "Form cues, tempo, etc.",
+              "rpe": "7-8" (if specified),
               "metrics_template": {
                 "type": "sets_reps_weight",
                 "target_sets": 3,
@@ -64,53 +458,128 @@ Output JSON schema:
   ]
 }
 
-Rules:
-- Parse ALL 7 days of the week
-- If a day is rest, set focus to "Rest" with empty blocks array
-- Recognize common formats: supersets (A1/A2), AMRAPs, EMOMs
-- Extract sets, reps, weight guidance from text
-- Return ONLY valid JSON, no markdown`;
+**METRICS TEMPLATE TYPES (use the correct one!):**
+- sets_reps_weight: { type, target_sets, target_reps, rest_period_s } - DEFAULT for strength exercises
+- sets_reps: { type, target_sets, target_reps } - bodyweight exercises
+- duration_only: { type, duration_minutes } - cardio like running, cycling
+- sets_duration: { type, target_sets, duration_seconds } - planks, holds
+- sets_duration_rest: { type, target_sets, work_duration_s, rest_duration_s } - intervals like rowing sprints
+- distance_time: { type, distance_km OR distance_m } - running with distance
+
+**HANDLE EDGE CASES:**
+- "Chest day" → Parse as single workout on Day 1, don't add exercises
+- Single exercise listed → Put it in a block, don't invent other exercises
+- Just exercise names → Add sensible sets/reps using sets_reps_weight
+- Foreign language → Translate exercise names to English
+- Typos → Fix them and parse correctly
+
+${CARDIO_PARSING_RULES}
+
+Parse intelligently. Return ONLY valid JSON.`;
+
+    // Detect 2x/day patterns in the plan text
+    const hasTwoADayPatterns = detectTwoADayFormat(args.planText);
+
+    // Add 2x/day parsing instructions if patterns detected
+    const twoADayParsingPrompt = hasTwoADayPatterns ? `
+**2x DAILY TRAINING DETECTED**
+This plan contains two workouts per day. Look for patterns like:
+- "Day 1A / Day 1B" or "Day 1a / Day 1b"
+- "Morning Session / Evening Session"
+- "AM / PM" workouts
+- "Session 1: / Session 2:"
+- "Workout A: / Workout B:"
+
+For days with 2 sessions, output "sessions" array instead of "blocks":
+{
+  "day_of_week": 1,
+  "focus": "Cardio + Strength",
+  "sessions": [
+    {
+      "session_name": "AM Cardio",
+      "time_of_day": "morning",
+      "estimated_duration": 45,
+      "blocks": [...]
+    },
+    {
+      "session_name": "PM Strength",
+      "time_of_day": "evening",
+      "estimated_duration": 60,
+      "blocks": [...]
+    }
+  ]
+}
+
+IMPORTANT: For 2x/day, use "sessions" array. For single session days, use "blocks" directly.
+` : '';
 
     try {
-      const result = await model.generateContent([
-        systemPrompt,
-        `User's plan text:\n\n${args.planText}`
-      ]);
+      loggers.ai.info('Parsing workout plan with Gemini Pro (with retry logic)...', hasTwoADayPatterns ? '(2x/day detected)' : '');
 
-      const responseText = result.response.text();
+      const fullPrompt = twoADayParsingPrompt
+        ? `${systemPrompt}\n\n${twoADayParsingPrompt}`
+        : systemPrompt;
 
-      // Extract JSON from markdown code blocks if present
-      let jsonString = responseText;
-      if (responseText.includes('```json')) {
-        const match = responseText.match(/```json\n([\s\S]*?)\n```/);
-        if (match) jsonString = match[1];
-      } else if (responseText.includes('```')) {
-        const match = responseText.match(/```\n([\s\S]*?)\n```/);
-        if (match) jsonString = match[1];
+      const parsedPlan = await generateWithRetry(
+        ai.models,
+        {
+          model: 'gemini-2.5-pro',
+          contents: `${fullPrompt}\n\n---\nUSER'S PLAN TO PARSE:\n---\n${args.planText}`,
+          config: {
+            responseMimeType: "application/json",
+            thinkingConfig: { thinkingBudget: 8192 }
+          }
+        },
+        validateWorkoutPlan,
+        3 // Max 3 attempts
+      );
+
+      // Post-process: Ensure every exercise has a category
+      if (parsedPlan.weeklyPlan) {
+        for (const day of parsedPlan.weeklyPlan) {
+          if (!day.blocks) continue;
+
+          for (let blockIndex = 0; blockIndex < day.blocks.length; blockIndex++) {
+            const block = day.blocks[blockIndex];
+            if (!block.exercises) continue;
+
+            for (const exercise of block.exercises) {
+              if (!exercise.category) {
+                const exerciseName = exercise.exercise_name?.toLowerCase() || '';
+                const isWarmup = exerciseName.includes('stretch') ||
+                                exerciseName.includes('warmup') ||
+                                exerciseName.includes('mobility') ||
+                                exerciseName.includes('foam roll') ||
+                                blockIndex === 0;
+
+                const isCooldown = exerciseName.includes('cooldown') ||
+                                  exerciseName.includes('static stretch') ||
+                                  blockIndex === day.blocks.length - 1;
+
+                exercise.category = isWarmup ? 'warmup' : (isCooldown ? 'cooldown' : 'main');
+              }
+            }
+          }
+        }
       }
-
-      const parsedPlan = JSON.parse(jsonString);
-
-      // Increment user's API usage
-      await ctx.runMutation("mutations:incrementPlanParseUsage" as any, {
-        userId: args.userId
-      });
 
       return parsedPlan;
     } catch (error: any) {
-      console.error('Gemini API error:', error);
+      loggers.ai.error("Gemini API error:", error);
       throw new Error(`Failed to parse workout plan: ${error.message}`);
     }
   },
 });
 
 /**
- * Generate a personalized workout plan
+ * Generate a personalized workout plan using Gemini 2.5 Pro
  * Server-side action to keep API key secure
+ *
+ * This is the main plan generation function with comprehensive prompting
  */
 export const generateWorkoutPlan = action({
   args: {
-    userId: v.string(),
+    userId: v.optional(v.string()),
     preferences: v.object({
       primary_goal: v.string(),
       experience_level: v.string(),
@@ -118,67 +587,415 @@ export const generateWorkoutPlan = action({
       pain_points: v.array(v.string()),
       sport: v.optional(v.string()),
       additional_notes: v.optional(v.string()),
+      equipment: v.optional(v.string()),
+      preferred_session_length: v.optional(v.string()),
+      sex: v.optional(v.string()),
+      // NEW: Training split for 2x daily training
+      training_split: v.optional(v.object({
+        sessions_per_day: v.union(v.literal('1'), v.literal('2')),
+        training_type: v.union(
+          v.literal('strength_only'),
+          v.literal('strength_plus_cardio'),
+          v.literal('combined'),
+          v.literal('cardio_focused')
+        ),
+        // Cardio preferences for training types with cardio
+        cardio_preferences: v.optional(v.object({
+          preferred_types: v.array(v.string()),
+          favorite_exercise: v.optional(v.string()),
+          cardio_duration_minutes: v.optional(v.number()),
+          outdoor_preferred: v.optional(v.boolean()),
+        })),
+      })),
+      // NEW: Specific goal with target date (periodization)
+      specific_goal: v.optional(v.object({
+        event_type: v.optional(v.union(v.string(), v.null())),
+        event_name: v.optional(v.union(v.string(), v.null())),
+        target_date: v.optional(v.union(v.string(), v.null())),
+        current_readiness: v.optional(v.union(v.number(), v.null())),
+        description: v.optional(v.union(v.string(), v.null())),
+      })),
+      // PERFORMANCE OPTIMIZATION FLAGS
+      _useCompressedPrompt: v.optional(v.boolean()), // 60% token reduction
+      _generateDayOneOnly: v.optional(v.boolean()), // Progressive generation step 1
+      _day1Context: v.optional(v.any()), // Progressive generation step 2
+      _forceProModel: v.optional(v.boolean()), // Force Pro model (quality mode)
+      _useFlashModel: v.optional(v.boolean()), // Force Flash model (fast mode)
     }),
+    // Optional supplement stack for personalized recommendations
+    supplements: v.optional(v.array(v.object({
+      name: v.string(),
+      timing: v.string(),
+      dosage: v.optional(v.string()),
+    }))),
   },
   handler: async (ctx, args) => {
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      throw new Error("Gemini API key not configured");
+      throw new Error("Gemini API key not configured. Set GEMINI_API_KEY in Convex environment variables.");
     }
 
-    const { GoogleGenerativeAI } = await import("@google/genai");
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+    // Rate limiting - prevent abuse of expensive AI calls
+    if (args.userId) {
+      const { checkRateLimit } = await import("./rateLimiter");
+      checkRateLimit(args.userId, "generateWorkoutPlan");
+    }
 
-    const { primary_goal, experience_level, training_frequency, pain_points, sport, additional_notes } = args.preferences;
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey });
 
-    const systemPrompt = `You are an expert strength & conditioning coach. Generate a personalized workout plan based on the user's goals and constraints.
+    const {
+      primary_goal,
+      experience_level,
+      training_frequency,
+      pain_points,
+      sport,
+      additional_notes,
+      equipment,
+      preferred_session_length,
+      sex,
+      training_split,
+      specific_goal,
+      _useCompressedPrompt,
+      _generateDayOneOnly,
+      _day1Context,
+      _forceProModel,
+      _useFlashModel,
+    } = args.preferences;
 
-User Profile:
-- Goal: ${primary_goal}
-- Experience: ${experience_level}
-- Training Days/Week: ${training_frequency}
-- Pain Points: ${pain_points.join(', ') || 'None'}
-- Sport Focus: ${sport || 'General Fitness'}
-${additional_notes ? `- Additional Notes: ${additional_notes}` : ''}
+    // ═══════════════════════════════════════════════════════════
+    // PERFORMANCE OPTIMIZATION: Smart Model Selection
+    // ═══════════════════════════════════════════════════════════
+    let selectedModel = 'gemini-2.5-pro'; // Default to Pro
 
-Generate a structured 7-day workout plan in JSON format (same schema as parseWorkoutPlan).
+    // Force model if specified
+    if (_forceProModel) {
+      selectedModel = 'gemini-2.5-pro';
+      loggers.ai.info("🎯 Model: Pro (forced - quality mode)");
+    } else if (_useFlashModel) {
+      selectedModel = 'gemini-2.5-flash';
+      loggers.ai.info("⚡ Model: Flash (forced - fast mode)");
+    } else {
+      // Smart auto-selection (60% Flash, 40% Pro)
+      const isSimpleCase =
+        experience_level === 'beginner' &&
+        (primary_goal === 'strength' || primary_goal === 'aesthetic') &&
+        (!pain_points || pain_points.length === 0) &&
+        !sport &&
+        !training_split?.sessions_per_day &&
+        !specific_goal?.target_date;
 
-Requirements:
-- Match training frequency (rest days on non-training days)
-- Avoid exercises that aggravate pain points
-- Progressive overload built in
-- Sport-specific exercises if applicable
-- Proper warm-up and cool-down
-- Evidence-based exercise selection
+      if (isSimpleCase) {
+        selectedModel = 'gemini-2.5-flash'; // 2-3x faster, 90% cheaper
+        loggers.ai.info("⚡ Model: Flash (auto-selected - simple case, 2-3x faster)");
+      } else {
+        loggers.ai.info("🎯 Model: Pro (auto-selected - complex case, higher quality)");
+      }
+    }
 
-Return ONLY valid JSON.`;
+    // Get sport-specific training context
+    const sportContext = formatSportPrompt(sport);
+
+    // Get supplement-based programming adjustments
+    const supplementContext = formatSupplementPrompt(args.supplements);
+
+    // Build training split prompt for 2x daily training (pass primary_goal for cardio duration calculation)
+    const trainingSplitPrompt = formatTrainingSplitPrompt(training_split, primary_goal);
+
+    // Build periodization prompt if user has a target date
+    const periodizationPrompt = formatPeriodizationPrompt(specific_goal);
+
+    // Get session length guidance from unified schema
+    const sessionLengthPrompt = preferred_session_length
+      ? getSessionLengthGuidance(preferred_session_length as SessionLength)
+      : '';
+
+    // Get duration constraint and heart rate guidance
+    const durationConstraintPrompt = preferred_session_length
+      ? getDurationConstraintPrompt(parseInt(preferred_session_length) || 60)
+      : '';
+
+    const heartRateGuidancePrompt = getHeartRateGuidance();
+
+    // Get exercise selection hierarchy based on sport and goal
+    const exerciseHierarchyPrompt = getExerciseSelectionHierarchyPrompt(sport, primary_goal);
+
+    // Determine if this is a 2x/day plan
+    const hasTwoADay = training_split?.sessions_per_day === '2';
+    const hasTargetDate = specific_goal?.target_date != null;
+
+    // Get comprehensive metrics template reference (CRITICAL for correct formatting)
+    const metricsTemplatePrompt = getMetricsTemplatePrompt();
+    const terminologyPrompt = getTerminologyPrompt();
+    const examplePlansPrompt = getExamplePlansPrompt();
+
+    // Comprehensive system prompt for high-quality plan generation
+    const systemPrompt = `You are an elite, evidence-based personal trainer for the REBLD fitness app. Create a world-class, personalized 7-day workout plan.
+
+**User Profile:**
+- Primary Goal: ${primary_goal}
+- Experience Level: ${experience_level}
+- Training Frequency: ${training_frequency} days per week
+- Pain Points: ${pain_points.join(', ') || 'None reported'}
+- Sport: ${sport || 'General Fitness'}
+- Equipment: ${equipment || 'Full gym access'}
+- STRENGTH Session Length: ${preferred_session_length || '60'} minutes (LIFTING ONLY - cardio duration is separate)
+- Sex: ${sex || 'Not specified'}
+- Additional Notes: ${additional_notes || 'None'}
+${training_split?.sessions_per_day === '2' ? `- Training Split: 2x DAILY (${training_split.training_type})` : ''}
+${specific_goal?.target_date ? `- Target Event Date: ${specific_goal.target_date}` : ''}
+${specific_goal?.event_type ? `- Event Type: ${specific_goal.event_type}` : ''}
+
+${sportContext}
+${supplementContext}
+${sessionLengthPrompt}
+${durationConstraintPrompt}
+${heartRateGuidancePrompt}
+${trainingSplitPrompt}
+${periodizationPrompt}
+${exerciseHierarchyPrompt}
+${CARDIO_PARSING_RULES}
+
+${metricsTemplatePrompt}
+
+${terminologyPrompt}
+
+${examplePlansPrompt}
+
+**CRITICAL REQUIREMENTS:**
+
+1. **Block-Based Structure**: Use workout blocks (single, superset, amrap)
+
+2. **Warmup Mandate**: Each training day MUST start with 5-7 SPECIFIC warmup exercises:
+   - Use the mobility work listed above for the sport
+   - Include dynamic stretches (Cat-Cow, Hip Circles, Arm Circles)
+   - Include activation exercises (Band Pull-Aparts, Glute Bridges)
+   - NEVER use generic names like "General Warmup"
+
+3. **Main Workout**: Evidence-based exercise selection
+   - PRIORITIZE the S-Tier exercises listed above for this sport
+   - Match training frequency (create rest days as needed)
+   - Avoid exercises that aggravate pain points
+   - Include RPE targets and rest periods
+   - Follow the conditioning protocols specified above
+
+4. **Cooldown**: 2-4 specific stretching exercises relevant to the sport
+
+5. **Pain Point Protocol**:
+   - Knee pain → AVOID: deep squats, lunges, jump exercises
+   - Lower back pain → AVOID: deadlifts, bent rows, good mornings
+   - Shoulder pain → AVOID: overhead press, dips, upright rows
+   - ALSO avoid any exercises listed in the "AVOID" section above
+
+6. **Core Training**: Include the core exercises listed above as essential for this sport
+
+**OUTPUT FORMAT (JSON only):**
+{
+  "name": "Personalized Training Plan",
+  "weeklyPlan": [
+    {
+      "day_of_week": 1,
+      "focus": "Upper Body Strength",
+      "blocks": [
+        {
+          "type": "single",
+          "exercises": [
+            {
+              "exercise_name": "Cat-Cow Stretch",
+              "category": "warmup",
+              "metrics_template": {
+                "type": "sets_reps_weight",
+                "target_sets": 2,
+                "target_reps": "10"
+              }
+            }
+          ]
+        },
+        {
+          "type": "single",
+          "exercises": [
+            {
+              "exercise_name": "Bench Press",
+              "category": "main",
+              "rpe": "7-8",
+              "metrics_template": {
+                "type": "sets_reps_weight",
+                "target_sets": 4,
+                "target_reps": "8-10",
+                "rest_period_s": 90
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+**CRITICAL**: EVERY exercise MUST have a "category" field with one of: "warmup", "main", or "cooldown". This is REQUIRED - exercises without category will fail validation.
+
+Generate a complete 7-day plan. Return ONLY valid JSON.`;
+
+    // ═══════════════════════════════════════════════════════════
+    // PERFORMANCE OPTIMIZATION: Prompt Compression (60% reduction)
+    // ═══════════════════════════════════════════════════════════
+    let finalPrompt = systemPrompt;
+
+    if (_useCompressedPrompt) {
+      // Compressed version (60% smaller, 40-50% faster)
+      finalPrompt = `Create 7-day plan.
+USER: goal=${primary_goal}, exp=${experience_level}, freq=${training_frequency}, sex=${sex || 'unspecified'}
+${pain_points && pain_points.length > 0 ? `injuries=${pain_points.join(',')}` : ''}
+${equipment ? `equip=${equipment}` : ''}
+${sport ? `sport=${sport}` : ''}
+
+RULES:
+- 7 days (Mon-Sun), rest days have empty blocks
+- Blocks: {type:"single"|"superset"|"amrap", exercises:[...]}
+- Exercise: {exercise_name, metrics_template:{type,sets,reps,weight_kg}, category:"warmup"|"main"|"cooldown"}
+- Warmup → Main → Cooldown order
+- ${primary_goal === 'strength' ? 'Focus: compounds, 3-5 reps, 85-95% 1RM' : ''}
+- ${primary_goal === 'aesthetic' ? 'Focus: volume, 6-12 reps, 65-85% 1RM' : ''}
+- ${primary_goal === 'athletic' ? 'Focus: power + strength, explosive work first' : ''}
+- ${pain_points && pain_points.length > 0 ? `AVOID: ${pain_points.join(', ')}` : ''}
+
+Return valid JSON WorkoutPlan.`;
+
+      loggers.ai.info("📝 Using compressed prompt (60% token reduction)");
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // PERFORMANCE OPTIMIZATION: Progressive Generation (Day 1 only)
+    // ═══════════════════════════════════════════════════════════
+    if (_generateDayOneOnly) {
+      const dayOneFocus = primary_goal === 'strength' ? 'Lower Body Power (Squat focus)' :
+                         primary_goal === 'aesthetic' ? 'Chest & Triceps' :
+                         primary_goal === 'athletic' ? 'Power Development' :
+                         'Full Body';
+
+      finalPrompt = `Generate DAY 1 ONLY of a workout plan.
+
+USER: goal=${primary_goal}, exp=${experience_level}, sex=${sex || 'unspecified'}
+${pain_points && pain_points.length > 0 ? `injuries=${pain_points.join(',')}` : ''}
+
+DAY 1: ${dayOneFocus}
+
+Include: Warmup (5-7 exercises) → Main Work (4-6 exercises) → Cooldown (2-3 stretches)
+
+Return JSON:
+{
+  "name": "Day 1 Preview",
+  "weeklyPlan": [{
+    "day_of_week": 1,
+    "focus": "${dayOneFocus}",
+    "blocks": [...]
+  }]
+}`;
+
+      loggers.ai.info("🚀 Generating Day 1 only (progressive mode - 2 seconds)");
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // PERFORMANCE OPTIMIZATION: Remaining days with Day 1 context
+    // ═══════════════════════════════════════════════════════════
+    if (_day1Context) {
+      finalPrompt = `Complete the 7-day plan. Day 1 provided below.
+
+DAY 1: ${JSON.stringify(_day1Context)}
+
+USER: goal=${primary_goal}, exp=${experience_level}
+${pain_points && pain_points.length > 0 ? `injuries=${pain_points.join(',')}` : ''}
+
+Generate Days 2-7 with balanced progression that complements Day 1.
+
+Return JSON:
+{
+  "name": "Complete Plan",
+  "weeklyPlan": [day1_from_above, day2, day3, day4, day5, day6, day7]
+}`;
+
+      loggers.ai.info("🚀 Generating remaining 6 days (progressive mode step 2)");
+    }
 
     try {
-      const result = await model.generateContent(systemPrompt);
-      const responseText = result.response.text();
+      loggers.ai.info(`Generating plan with ${selectedModel} (with retry logic)...`);
+      const startTime = Date.now();
 
-      // Extract JSON
-      let jsonString = responseText;
-      if (responseText.includes('```json')) {
-        const match = responseText.match(/```json\n([\s\S]*?)\n```/);
-        if (match) jsonString = match[1];
-      } else if (responseText.includes('```')) {
-        const match = responseText.match(/```\n([\s\S]*?)\n```/);
-        if (match) jsonString = match[1];
+      // Use generateWithRetry for robust generation with automatic validation
+      const generatedPlan = await generateWithRetry(
+        ai.models,
+        {
+          model: selectedModel,
+          contents: finalPrompt,
+          config: {
+            responseMimeType: "application/json",
+            // Reduced from 16384 to 4096 - still quality reasoning but 2-3x faster
+            thinkingConfig: selectedModel === 'gemini-2.5-pro' ? { thinkingBudget: 4096 } : undefined
+          }
+        },
+        validateWorkoutPlan,
+        2 // Reduced from 3 to 2 - 3rd attempt rarely succeeds, saves 4-8s
+      );
+
+      // Post-process: Add duration estimates to all days/sessions
+      addDurationEstimates(generatedPlan);
+
+      const elapsedMs = Date.now() - startTime;
+      loggers.ai.info(`⏱️  Generation completed in ${(elapsedMs / 1000).toFixed(2)}s`);
+      loggers.ai.info('✅ Plan validation passed! All metrics templates are correct.');
+
+      // Validate plan has required structure
+      if (!generatedPlan.weeklyPlan || generatedPlan.weeklyPlan.length === 0) {
+        throw new Error('Generated plan has no weekly schedule');
       }
 
-      const generatedPlan = JSON.parse(jsonString);
+      // Post-process: Ensure every exercise has a category (fallback for AI inconsistency)
+      for (const day of generatedPlan.weeklyPlan) {
+        if (!day.blocks) continue;
 
-      // Increment user's API usage
-      await ctx.runMutation("mutations:incrementPlanGenerationUsage" as any, {
-        userId: args.userId
-      });
+        for (let blockIndex = 0; blockIndex < day.blocks.length; blockIndex++) {
+          const block = day.blocks[blockIndex];
+          if (!block.exercises) continue;
 
+          for (const exercise of block.exercises) {
+            if (!exercise.category) {
+              // Infer category based on position and exercise name
+              const exerciseName = exercise.exercise_name?.toLowerCase() || '';
+              const isWarmup = exerciseName.includes('stretch') ||
+                              exerciseName.includes('warmup') ||
+                              exerciseName.includes('mobility') ||
+                              exerciseName.includes('activation') ||
+                              exerciseName.includes('cat-cow') ||
+                              exerciseName.includes('foam roll') ||
+                              exerciseName.includes('band pull') ||
+                              exerciseName.includes('circle') ||
+                              blockIndex === 0;
+
+              const isCooldown = exerciseName.includes('cooldown') ||
+                                exerciseName.includes('static stretch') ||
+                                blockIndex === day.blocks.length - 1;
+
+              exercise.category = isWarmup ? 'warmup' : (isCooldown ? 'cooldown' : 'main');
+              loggers.ai.debug(`Auto-assigned category "${exercise.category}" to "${exercise.exercise_name}"`);
+            }
+          }
+        }
+      }
+
+      loggers.ai.info('Plan generated successfully with', generatedPlan.weeklyPlan.length, 'days');
       return generatedPlan;
     } catch (error: any) {
-      console.error('Gemini API error:', error);
+      loggers.ai.error("Gemini API error:", error);
+
+      // Provide helpful error messages
+      if (error.message?.includes('API_KEY')) {
+        throw new Error('AI service configuration error. Please contact support.');
+      }
+      if (error.message?.includes('timeout') || error.message?.includes('deadline')) {
+        throw new Error('AI service is busy. Please try again in a moment.');
+      }
+
       throw new Error(`Failed to generate workout plan: ${error.message}`);
     }
   },
@@ -195,7 +1012,7 @@ export const explainExercise = action({
   },
   handler: async (ctx, args) => {
     // First check if exercise explanation exists in cache
-    const cached = await ctx.runQuery("queries:getExerciseFromCache" as any, {
+    const cached = await ctx.runQuery(api.queries.getExerciseFromCache, {
       exerciseName: args.exerciseName
     });
 
@@ -205,9 +1022,14 @@ export const explainExercise = action({
         muscles_worked: cached.muscles_worked,
         form_cue: cached.form_cue,
         common_mistake: cached.common_mistake,
+        step_by_step: cached.step_by_step || [],
         cached: true
       };
     }
+
+    // Rate limiting (only for non-cached requests)
+    const { checkRateLimit } = await import("./rateLimiter");
+    checkRateLimit(args.userId, "explainExercise");
 
     // Not in cache, generate explanation
     const apiKey = process.env.GEMINI_API_KEY;
@@ -216,25 +1038,36 @@ export const explainExercise = action({
       throw new Error("Gemini API key not configured");
     }
 
-    const { GoogleGenerativeAI } = await import("@google/genai");
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey });
 
-    const prompt = `Provide a concise explanation of the exercise: "${args.exerciseName}"
+    const prompt = `Exercise: "${args.exerciseName}"
 
-Format as JSON:
+Be ULTRA CONCISE. Max 15 words per field. No fluff.
+
+JSON format:
 {
-  "explanation": "Brief 2-3 sentence overview",
-  "muscles_worked": ["Primary muscle 1", "Primary muscle 2"],
-  "form_cue": "Single most important form cue",
-  "common_mistake": "Most common mistake to avoid"
+  "explanation": "One punchy sentence - what it does",
+  "muscles_worked": ["Muscle1", "Muscle2"],
+  "form_cue": "Key cue in 5-8 words",
+  "common_mistake": "Mistake in 5-8 words",
+  "step_by_step": ["Setup", "Execute", "Return"]
 }
+
+RULES:
+- explanation: 1 sentence, max 15 words
+- form_cue: Action words, not explanation
+- common_mistake: What NOT to do
+- step_by_step: 3-4 steps, max 6 words each
 
 Return ONLY valid JSON.`;
 
     try {
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
+      const result = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: prompt,
+      });
+      const responseText = result.text || '';
 
       // Extract JSON
       let jsonString = responseText;
@@ -249,9 +1082,13 @@ Return ONLY valid JSON.`;
       const exerciseData = JSON.parse(jsonString);
 
       // Save to cache
-      await ctx.runMutation("mutations:cacheExercise" as any, {
-        exercise_name: args.exerciseName.toLowerCase().replace(/\s+/g, '_'),
-        ...exerciseData,
+      await ctx.runMutation(api.mutations.cacheExerciseExplanation, {
+        exerciseName: args.exerciseName,
+        explanation: exerciseData.explanation || '',
+        muscles_worked: exerciseData.muscles_worked || [],
+        form_cue: exerciseData.form_cue || null,
+        common_mistake: exerciseData.common_mistake || null,
+        step_by_step: exerciseData.step_by_step || [],
         source: "gemini_api"
       });
 
@@ -260,8 +1097,518 @@ Return ONLY valid JSON.`;
         cached: false
       };
     } catch (error: any) {
-      console.error('Gemini API error:', error);
+      loggers.ai.error("Gemini API error:", error);
       throw new Error(`Failed to explain exercise: ${error.message}`);
     }
+  },
+});
+
+/**
+ * Chatbot action - handles user messages with function calling for workout plan modifications
+ * Supports: substitute exercise, add exercise, modify, remove, adjust difficulty, extend/shorten workout
+ */
+export const handleChatMessage = action({
+  args: {
+    message: v.string(),
+    planId: v.string(),
+    dayOfWeek: v.number(),
+    conversationHistory: v.optional(v.array(v.object({
+      role: v.union(v.literal("user"), v.literal("model")),
+      content: v.string(),
+    }))),
+    language: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("Gemini API key not configured");
+    }
+
+    // Get the workout plan
+    const plan = await ctx.runQuery(api.queries.getWorkoutPlan, { planId: args.planId });
+    if (!plan) {
+      throw new Error("Workout plan not found");
+    }
+
+    // Rate limiting based on plan's userId
+    if (plan.userId) {
+      const { checkRateLimit } = await import("./rateLimiter");
+      checkRateLimit(plan.userId, "handleChatMessage");
+    }
+
+    const { GoogleGenAI, Type } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey });
+
+    // Define function declarations for plan modifications
+    const functions = [
+      {
+        name: "substituteExercise",
+        description: "Replace an exercise in a specific day with a new exercise and metrics.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            day_of_week: { type: Type.NUMBER, description: "Target day: 1=Mon ... 7=Sun" },
+            original_exercise_name: { type: Type.STRING, description: "Exact name of the exercise to replace" },
+            new_exercise_name: { type: Type.STRING, description: "Name of the new exercise" },
+            new_sets: { type: Type.NUMBER, description: "Number of sets" },
+            new_reps: { type: Type.STRING, description: "Rep range (e.g., '8-10' or '12')" },
+            new_rest_period_s: { type: Type.NUMBER, description: "Rest period in seconds" },
+          },
+          required: ["day_of_week", "original_exercise_name", "new_exercise_name", "new_sets", "new_reps"],
+        },
+      },
+      {
+        name: "modifyExercise",
+        description: "Modify sets, reps, rest, or RPE of an existing exercise without replacing it.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            day_of_week: { type: Type.NUMBER },
+            exercise_name: { type: Type.STRING },
+            new_sets: { type: Type.NUMBER },
+            new_reps: { type: Type.STRING },
+            new_rest_period_s: { type: Type.NUMBER },
+          },
+          required: ["day_of_week", "exercise_name"],
+        },
+      },
+      {
+        name: "addExercise",
+        description: "Add a new exercise to a specific day.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            day_of_week: { type: Type.NUMBER },
+            exercise_name: { type: Type.STRING },
+            category: { type: Type.STRING, description: "warmup | main | cooldown" },
+            sets: { type: Type.NUMBER },
+            reps: { type: Type.STRING },
+            rest_period_s: { type: Type.NUMBER },
+          },
+          required: ["day_of_week", "exercise_name", "category", "sets", "reps"],
+        },
+      },
+    ];
+
+    // Build system instruction with plan context
+    const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const currentDay = args.dayOfWeek;
+    const todayPlan = plan.weeklyPlan?.find((d: any) => d.day_of_week === currentDay);
+
+    const languageInstruction = args.language === 'de'
+      ? 'IMPORTANT: Respond in German (Deutsch). All your responses must be in German.'
+      : 'Respond in English.';
+
+    const systemInstruction = `You are REBLD's AI workout coach. Help users with their workout plans.
+
+${languageInstruction}
+
+TODAY: ${dayNames[currentDay - 1]}
+PLAN: ${plan.name}
+TODAY'S WORKOUT: ${todayPlan?.focus || 'Rest day'}
+
+CAPABILITIES:
+- substituteExercise: Swap one exercise for another
+- modifyExercise: Change sets/reps/rest without swapping
+- addExercise: Add new exercise to the plan
+
+RULES:
+1. ONLY answer workout/fitness questions
+2. Be concise (2-3 sentences max)
+3. When modifying the plan, call the appropriate function
+4. Refuse off-topic questions politely
+
+CONTEXT:
+Plan has weeklyPlan[] with days (day_of_week 1-7), focus, and blocks.
+Blocks have type (single|superset|amrap) and exercises[] with exercise_name, metrics_template, rpe.`;
+
+    // Build conversation history for context
+    const historyText = (args.conversationHistory || [])
+      .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+      .join('\n');
+
+    const prompt = `${systemInstruction}
+
+CONVERSATION HISTORY:
+${historyText || 'No previous messages.'}
+
+USER MESSAGE: ${args.message}
+
+Respond conversationally. If the user asks to modify their plan, respond with a JSON object in this format:
+{"action": "substituteExercise"|"modifyExercise"|"addExercise", "params": {...}}
+Otherwise, respond with plain text.`;
+
+    try {
+      const result = await ai.models.generateContent({
+        model: "gemini-2.0-flash-exp",
+        contents: prompt,
+        config: {
+          tools: [{ functionDeclarations: functions }],
+        },
+      });
+
+      const responseText = result.text || '';
+
+      // Check if response contains a function call JSON
+      const functionMatch = responseText.match(/\{"action"\s*:\s*"(\w+)",\s*"params"\s*:\s*(\{[^}]+\})\}/);
+      if (functionMatch) {
+        const actionMap: Record<string, string> = {
+          'substituteExercise': 'substituteExercise',
+          'modifyExercise': 'modifyExercise',
+          'addExercise': 'addExercise',
+        };
+        try {
+          const params = JSON.parse(functionMatch[2]);
+          return {
+            type: "function_call",
+            functionName: actionMap[functionMatch[1]] || functionMatch[1],
+            functionArgs: params,
+            textResponse: null,
+          };
+        } catch {
+          // Fall through to text response
+        }
+      }
+
+      // Regular text response
+      return {
+        type: "text",
+        textResponse: responseText,
+        functionCall: null,
+      };
+    } catch (error: any) {
+      loggers.ai.error("Chat error:", error);
+      throw new Error(`Chat failed: ${error.message}`);
+    }
+  },
+});
+
+/**
+ * analyzeBodyPhoto - Secure server-side body composition analysis
+ *
+ * Uses Gemini Vision API to analyze body photos for:
+ * - Body fat percentage estimation
+ * - Muscle definition assessment
+ * - Progress comparison with previous photos
+ * - Body composition insights
+ *
+ * SECURITY: API key stays server-side, never exposed to client
+ */
+export const analyzeBodyPhoto = action({
+  args: {
+    imageBase64: v.string(), // Base64 encoded image
+    previousPhotoBase64: v.optional(v.string()), // Optional comparison photo
+    userGoal: v.optional(v.string()), // User's fitness goal for context
+    language: v.optional(v.string()),
+    userId: v.optional(v.string()), // For rate limiting
+  },
+  handler: async (ctx, args) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("Gemini API key not configured");
+    }
+
+    // Rate limiting - expensive vision API
+    if (args.userId) {
+      const { checkRateLimit } = await import("./rateLimiter");
+      checkRateLimit(args.userId, "analyzeBodyPhoto");
+    }
+
+    try {
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey });
+
+      const systemInstruction = `You are a professional fitness coach and body composition analyst.
+Analyze the provided body photo and provide:
+
+1. **Body Fat Percentage Estimate**: Rough visual estimate (e.g., "15-18%")
+2. **Muscle Definition**: Assessment of visible muscle groups and definition
+3. **Posture & Alignment**: Any notable posture issues or asymmetries
+4. **Progress Assessment**: If a previous photo is provided, compare and note improvements/changes
+5. **Recommendations**: 2-3 actionable suggestions based on their goal
+
+Be encouraging but honest. Focus on health and sustainable progress.
+Respond in ${args.language || "English"}.`;
+
+      // Build prompt parts with images
+      const promptParts: any[] = [
+        { text: `${systemInstruction}\n\nUser's fitness goal: ${args.userGoal || "General fitness"}\n\nCurrent Photo:` },
+        {
+          inlineData: {
+            mimeType: "image/jpeg",
+            data: args.imageBase64,
+          },
+        },
+      ];
+
+      // Add comparison photo if provided
+      if (args.previousPhotoBase64) {
+        promptParts.push(
+          { text: "\n\nPrevious Photo (for comparison):" },
+          {
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: args.previousPhotoBase64,
+            },
+          }
+        );
+      }
+
+      promptParts.push({
+        text: "\n\nProvide a detailed body composition analysis with the 5 sections mentioned above.",
+      });
+
+      const result = await ai.models.generateContent({
+        model: "gemini-2.0-flash-exp",
+        contents: [{ parts: promptParts }],
+        config: {
+          temperature: 0.7,
+          maxOutputTokens: 1000,
+        },
+      });
+
+      const analysis = result.text || '';
+
+      loggers.ai.info("Body photo analysis completed");
+
+      return {
+        analysis,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      loggers.ai.error("Body photo analysis error:", error);
+      throw new Error(`Photo analysis failed: ${error.message}`);
+    }
+  },
+});
+
+/**
+ * analyzePairedBodyPhotos - Analyze front + back photos together
+ * Provides more comprehensive body composition analysis
+ */
+export const analyzePairedBodyPhotos = action({
+  args: {
+    frontImageBase64: v.string(),
+    backImageBase64: v.string(),
+    previousFrontBase64: v.optional(v.string()),
+    previousBackBase64: v.optional(v.string()),
+    userGoal: v.optional(v.string()),
+    language: v.optional(v.string()),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("Gemini API key not configured");
+    }
+
+    // Rate limiting
+    const { checkRateLimit } = await import("./rateLimiter");
+    checkRateLimit(args.userId, "analyzeBodyPhoto");
+
+    try {
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey });
+
+      const systemPrompt = `You are an expert fitness coach and body composition analyst for the REBLD fitness app.
+
+Your task: Analyze progress photos (FRONT + BACK views of the SAME person) and provide constructive, motivational feedback.
+
+ANALYSIS GUIDELINES:
+1. Body Fat Estimate: Provide a reasonable estimate (5-35% range) based on visible muscle definition, vascularity, and body composition markers from BOTH angles
+2. Muscle Changes: Describe visible changes in muscle development, symmetry, and overall physique using BOTH front and back views
+3. Improvements: List 2-4 specific positive changes visible across both angles
+4. Suggestions: Provide 2-4 actionable training suggestions based on complete physique assessment
+5. Confidence: Rate your analysis confidence 0-100 based on photo quality, lighting, and pose
+
+TONE: Professional, motivating, evidence-based. Focus on progress and actionable advice.
+AVOID: Body shaming, unrealistic expectations, medical diagnoses
+
+Return ONLY valid JSON matching this structure:
+{
+  "bodyFatEstimate": <number 5-35>,
+  "muscleChanges": "<detailed string>",
+  "improvements": ["<string>", "<string>", ...],
+  "suggestions": ["<string>", "<string>", ...],
+  "confidence": <number 0-100>
+}`;
+
+      const promptParts: any[] = [
+        {
+          text: `${systemPrompt}
+
+CURRENT PHOTOS (same person, same day):
+User's goal: ${args.userGoal || "General fitness"}
+
+Image 1: FRONT view`,
+        },
+        {
+          inlineData: {
+            mimeType: "image/jpeg",
+            data: args.frontImageBase64,
+          },
+        },
+        { text: "Image 2: BACK view" },
+        {
+          inlineData: {
+            mimeType: "image/jpeg",
+            data: args.backImageBase64,
+          },
+        },
+      ];
+
+      // Add previous photos if provided
+      if (args.previousFrontBase64 && args.previousBackBase64) {
+        promptParts.push(
+          { text: "\n\nPREVIOUS PHOTOS (for comparison):\nPrevious FRONT view:" },
+          {
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: args.previousFrontBase64,
+            },
+          },
+          { text: "Previous BACK view:" },
+          {
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: args.previousBackBase64,
+            },
+          }
+        );
+      }
+
+      promptParts.push({
+        text: `\n\nAnalyze these as 2 views of the SAME person for a complete body composition assessment.
+Respond in ${args.language || "English"} with valid JSON only.`,
+      });
+
+      const result = await ai.models.generateContent({
+        model: "gemini-2.0-flash-exp",
+        contents: [{ parts: promptParts }],
+        config: {
+          temperature: 0.7,
+          maxOutputTokens: 1500,
+          responseMimeType: "application/json",
+        },
+      });
+
+      const analysisText = result.text || '';
+
+      // Parse JSON response
+      const analysis = JSON.parse(analysisText);
+
+      loggers.ai.info("Paired body photo analysis completed");
+
+      return {
+        bodyFatEstimate: analysis.bodyFatEstimate,
+        muscleChanges: analysis.muscleChanges,
+        improvements: analysis.improvements,
+        suggestions: analysis.suggestions,
+        confidence: analysis.confidence,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      loggers.ai.error("Paired photo analysis error:", error);
+      throw new Error(`Paired photo analysis failed: ${error.message}`);
+    }
+  },
+});
+
+/**
+ * Batch populate step_by_step for exercises that don't have them
+ * Processes in small batches to avoid rate limits
+ */
+export const batchPopulateStepByStep = action({
+  args: {
+    batchSize: v.optional(v.number()),
+    delayMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = args.batchSize || 5;
+    const delayMs = args.delayMs || 4500; // ~13 requests/minute to stay under limit
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("Gemini API key not configured");
+    }
+
+    // Get exercises without step_by_step
+    const allExercises = await ctx.runQuery(api.queries.getExercisesWithoutSteps, {
+      limit: batchSize
+    });
+
+    if (allExercises.length === 0) {
+      return { processed: 0, message: "All exercises already have step_by_step" };
+    }
+
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey });
+
+    let processed = 0;
+    const results: { name: string; success: boolean; error?: string }[] = [];
+
+    for (const exercise of allExercises) {
+      try {
+        const prompt = `Exercise: "${exercise.exercise_name}"
+
+Generate ONLY step-by-step instructions. Be ULTRA CONCISE - max 6 words per step.
+
+JSON format:
+{
+  "step_by_step": ["Setup step", "Execute step", "Return step"]
+}
+
+RULES:
+- 3-4 steps maximum
+- Max 6 words per step
+- Action words only, no fluff
+
+Return ONLY valid JSON.`;
+
+        const result = await ai.models.generateContent({
+          model: "gemini-2.0-flash",
+          contents: prompt,
+        });
+
+        const responseText = result.text || '';
+        let jsonString = responseText;
+        if (responseText.includes('```json')) {
+          const match = responseText.match(/```json\n([\s\S]*?)\n```/);
+          if (match) jsonString = match[1];
+        } else if (responseText.includes('```')) {
+          const match = responseText.match(/```\n([\s\S]*?)\n```/);
+          if (match) jsonString = match[1];
+        }
+
+        const data = JSON.parse(jsonString);
+
+        // Update the exercise with step_by_step
+        await ctx.runMutation(api.mutations.updateExerciseStepByStep, {
+          exerciseId: exercise._id,
+          step_by_step: data.step_by_step || []
+        });
+
+        processed++;
+        results.push({ name: exercise.exercise_name, success: true });
+
+        // Delay between requests
+        if (processed < allExercises.length) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      } catch (error: any) {
+        results.push({
+          name: exercise.exercise_name,
+          success: false,
+          error: error.message
+        });
+      }
+    }
+
+    return {
+      processed,
+      total: allExercises.length,
+      results,
+      message: `Processed ${processed}/${allExercises.length} exercises`
+    };
   },
 });

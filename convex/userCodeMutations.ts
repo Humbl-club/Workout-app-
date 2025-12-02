@@ -22,6 +22,7 @@ function generateUserCode(): string {
 
 /**
  * Ensure user has a unique code (called on user creation or first login)
+ * RACE CONDITION FIX: Re-check user state before patching to prevent concurrent updates
  */
 export const ensureUserCode = mutation({
   args: {
@@ -61,6 +62,13 @@ export const ensureUserCode = mutation({
         code = generateUserCode();
         attempts++;
       }
+    }
+
+    // RACE CONDITION FIX: Re-read user to check if another concurrent call already set a code
+    const freshUser = await ctx.db.get(user._id);
+    if (freshUser?.userCode) {
+      // Another concurrent call already set a code, return that one
+      return freshUser.userCode;
     }
 
     // Update user with code

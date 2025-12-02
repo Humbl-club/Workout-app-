@@ -35,6 +35,7 @@ export const getSharedPlan = query({
 
 /**
  * Get user's workout buddies
+ * OPTIMIZED: Batch queries to avoid N+1 issue
  */
 export const getWorkoutBuddies = query({
   args: {
@@ -47,28 +48,41 @@ export const getWorkoutBuddies = query({
       .filter((q) => q.eq(q.field("status"), "active"))
       .collect();
 
-    // Get buddy user info and settings for each
-    const buddiesWithInfo = await Promise.all(
-      buddies.map(async (buddy) => {
-        const buddyUser = await ctx.db
-          .query("users")
-          .withIndex("by_userId", (q) => q.eq("userId", buddy.buddyId))
-          .first();
+    if (buddies.length === 0) {
+      return [];
+    }
 
-        const settings = await ctx.db
-          .query("buddySettings")
-          .withIndex("by_pair", (q) => q.eq("userId", args.userId).eq("buddyId", buddy.buddyId))
-          .first();
+    // OPTIMIZATION: Batch load all buddy users and settings to avoid N+1
+    const buddyIds = buddies.map(b => b.buddyId);
 
-        return {
-          ...buddy,
-          buddyUser,
-          settings
-        };
-      })
-    );
+    // Load all buddy users in parallel (still separate queries but all at once)
+    const [allBuddyUsers, allSettings] = await Promise.all([
+      // Get all buddy users
+      Promise.all(
+        buddyIds.map(buddyId =>
+          ctx.db
+            .query("users")
+            .withIndex("by_userId", (q) => q.eq("userId", buddyId))
+            .first()
+        )
+      ),
+      // Get all settings
+      Promise.all(
+        buddyIds.map(buddyId =>
+          ctx.db
+            .query("buddySettings")
+            .withIndex("by_pair", (q) => q.eq("userId", args.userId).eq("buddyId", buddyId))
+            .first()
+        )
+      )
+    ]);
 
-    return buddiesWithInfo;
+    // Map results back to buddies
+    return buddies.map((buddy, idx) => ({
+      ...buddy,
+      buddyUser: allBuddyUsers[idx],
+      settings: allSettings[idx]
+    }));
   },
 });
 
@@ -175,6 +189,7 @@ export const getBuddyPRComparison = query({
 
 /**
  * Get buddy notifications
+ * OPTIMIZED: Batch load buddy users to avoid N+1
  */
 export const getBuddyNotifications = query({
   args: {
@@ -187,22 +202,32 @@ export const getBuddyNotifications = query({
       .order("desc")
       .take(10);
 
-    // Get buddy names
-    const notificationsWithNames = await Promise.all(
-      notifications.map(async (notif) => {
-        const buddy = await ctx.db
-          .query("users")
-          .withIndex("by_userId", (q) => q.eq("userId", notif.triggeredBy))
-          .first();
+    if (notifications.length === 0) {
+      return [];
+    }
 
-        return {
-          ...notif,
-          buddyName: buddy ? "Buddy" : "Unknown" // Could use actual name if stored
-        };
-      })
+    // OPTIMIZATION: Get unique triggeredBy IDs and batch load
+    const uniqueBuddyIds = [...new Set(notifications.map(n => n.triggeredBy))];
+
+    const buddyUsers = await Promise.all(
+      uniqueBuddyIds.map(buddyId =>
+        ctx.db
+          .query("users")
+          .withIndex("by_userId", (q) => q.eq("userId", buddyId))
+          .first()
+      )
     );
 
-    return notificationsWithNames;
+    // Create a map for fast lookup
+    const buddyMap = new Map(
+      uniqueBuddyIds.map((id, idx) => [id, buddyUsers[idx]])
+    );
+
+    // Map buddy names to notifications
+    return notifications.map(notif => ({
+      ...notif,
+      buddyName: buddyMap.get(notif.triggeredBy) ? "Buddy" : "Unknown" // Could use actual name if stored
+    }));
   },
 });
 

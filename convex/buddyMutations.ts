@@ -1,5 +1,12 @@
 import { v } from "convex/values";
 import { mutation } from "./_generated/server";
+import { executeWithRollback } from "./utils/transactionHelpers";
+import {
+  SHARE_CODE_PREFIX,
+  SHARE_CODE_LENGTH,
+  MAX_SHARE_CODE_ATTEMPTS,
+  SHARE_CODE_EXPIRY_DAYS,
+} from "./utils/constants";
 
 /**
  * Generate a shareable plan code
@@ -10,18 +17,36 @@ export const createShareCode = mutation({
     userId: v.string()
   },
   handler: async (ctx, args) => {
-    // Generate unique share code
-    const code = `REBLD-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-
-    // Get plan details
+    // Get plan details first
     const plan = await ctx.db.get(args.planId);
     if (!plan || plan.userId !== args.userId) {
       throw new Error("Plan not found or unauthorized");
     }
 
+    // Generate unique share code with collision detection
+    let code: string;
+    let attempts = 0;
+
+    do {
+      code = `${SHARE_CODE_PREFIX}${Math.random().toString(36).substring(2, 2 + SHARE_CODE_LENGTH).toUpperCase()}`;
+
+      // Check for collision
+      const existing = await ctx.db
+        .query("sharedPlans")
+        .withIndex("by_shareCode", (q) => q.eq("shareCode", code))
+        .first();
+
+      if (!existing) break; // Unique code found
+
+      attempts++;
+      if (attempts >= MAX_SHARE_CODE_ATTEMPTS) {
+        throw new Error("Failed to generate unique share code after multiple attempts");
+      }
+    } while (true);
+
     // Create share record
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const expiresAt = new Date(now.getTime() + SHARE_CODE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
     const shareId = await ctx.db.insert("sharedPlans", {
       shareCode: code,
@@ -74,86 +99,104 @@ export const acceptSharedPlan = mutation({
       throw new Error("Original plan not found");
     }
 
-    // Create copy of plan for accepting user
-    const newPlanId = await ctx.db.insert("workoutPlans", {
-      userId: args.userId,
-      name: originalPlan.name,
-      weeklyPlan: originalPlan.weeklyPlan,
-      dailyRoutine: originalPlan.dailyRoutine,
-      createdAt: new Date().toISOString()
-    });
+    // Use transaction to ensure all operations are atomic
+    const result = await executeWithRollback(ctx.db, async (tracker) => {
+      // Create copy of plan for accepting user
+      const newPlanId = await ctx.db.insert("workoutPlans", {
+        userId: args.userId,
+        name: originalPlan.name,
+        weeklyPlan: originalPlan.weeklyPlan,
+        dailyRoutine: originalPlan.dailyRoutine,
+        createdAt: new Date().toISOString()
+      });
+      tracker.trackInsert("workoutPlans", newPlanId);
 
-    // If replace, set as active plan
-    if (args.action === "replace") {
-      const user = await ctx.db
-        .query("users")
-        .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      // If replace, set as active plan
+      if (args.action === "replace") {
+        const user = await ctx.db
+          .query("users")
+          .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+          .first();
+
+        if (user) {
+          await ctx.db.patch(user._id, {
+            activePlanId: newPlanId
+          });
+          tracker.trackUpdate("users", user._id, { activePlanId: user.activePlanId });
+        }
+      }
+
+      // Update shared plan record
+      await ctx.db.patch(sharedPlan._id, {
+        sharedWith: [...sharedPlan.sharedWith, args.userId],
+        acceptedBy: [...sharedPlan.acceptedBy, args.userId]
+      });
+      tracker.trackUpdate("sharedPlans", sharedPlan._id, {
+        sharedWith: sharedPlan.sharedWith,
+        acceptedBy: sharedPlan.acceptedBy
+      });
+
+      // Create buddy relationship
+      const existingBuddy = await ctx.db
+        .query("workoutBuddies")
+        .withIndex("by_pair", (q) => q.eq("userId", args.userId).eq("buddyId", sharedPlan.sharedBy))
         .first();
 
-      if (user) {
-        await ctx.db.patch(user._id, {
-          activePlanId: newPlanId
+      let buddyCreated = false;
+      if (!existingBuddy) {
+        const buddy1Id = await ctx.db.insert("workoutBuddies", {
+          userId: args.userId,
+          buddyId: sharedPlan.sharedBy,
+          sharedPlanId: newPlanId,
+          status: "active",
+          createdAt: new Date().toISOString(),
+          acceptedAt: new Date().toISOString()
         });
-      }
-    }
+        tracker.trackInsert("workoutBuddies", buddy1Id);
 
-    // Update shared plan record
-    await ctx.db.patch(sharedPlan._id, {
-      sharedWith: [...sharedPlan.sharedWith, args.userId],
-      acceptedBy: [...sharedPlan.acceptedBy, args.userId]
+        // Create reverse relationship
+        const buddy2Id = await ctx.db.insert("workoutBuddies", {
+          userId: sharedPlan.sharedBy,
+          buddyId: args.userId,
+          sharedPlanId: originalPlan._id,
+          status: "active",
+          createdAt: new Date().toISOString(),
+          acceptedAt: new Date().toISOString()
+        });
+        tracker.trackInsert("workoutBuddies", buddy2Id);
+
+        // Create default buddy settings
+        const settings1Id = await ctx.db.insert("buddySettings", {
+          userId: args.userId,
+          buddyId: sharedPlan.sharedBy,
+          notifyOnWorkoutStart: true,
+          compareStats: true,
+          shareLogs: true,
+          showPRs: true
+        });
+        tracker.trackInsert("buddySettings", settings1Id);
+
+        const settings2Id = await ctx.db.insert("buddySettings", {
+          userId: sharedPlan.sharedBy,
+          buddyId: args.userId,
+          notifyOnWorkoutStart: true,
+          compareStats: true,
+          shareLogs: true,
+          showPRs: true
+        });
+        tracker.trackInsert("buddySettings", settings2Id);
+
+        buddyCreated = true;
+      }
+
+      return {
+        success: true,
+        planId: newPlanId,
+        buddyCreated
+      };
     });
 
-    // Create buddy relationship
-    const existingBuddy = await ctx.db
-      .query("workoutBuddies")
-      .withIndex("by_pair", (q) => q.eq("userId", args.userId).eq("buddyId", sharedPlan.sharedBy))
-      .first();
-
-    if (!existingBuddy) {
-      await ctx.db.insert("workoutBuddies", {
-        userId: args.userId,
-        buddyId: sharedPlan.sharedBy,
-        sharedPlanId: newPlanId,
-        status: "active",
-        createdAt: new Date().toISOString(),
-        acceptedAt: new Date().toISOString()
-      });
-
-      // Create reverse relationship
-      await ctx.db.insert("workoutBuddies", {
-        userId: sharedPlan.sharedBy,
-        buddyId: args.userId,
-        sharedPlanId: originalPlan._id,
-        status: "active",
-        createdAt: new Date().toISOString(),
-        acceptedAt: new Date().toISOString()
-      });
-
-      // Create default buddy settings
-      await ctx.db.insert("buddySettings", {
-        userId: args.userId,
-        buddyId: sharedPlan.sharedBy,
-        notifyOnWorkoutStart: true,
-        compareStats: true,
-        shareLogs: true,
-        showPRs: true
-      });
-
-      await ctx.db.insert("buddySettings", {
-        userId: sharedPlan.sharedBy,
-        buddyId: args.userId,
-        notifyOnWorkoutStart: true,
-        compareStats: true,
-        shareLogs: true,
-        showPRs: true
-      });
-    }
-
-    return {
-      success: true,
-      planId: newPlanId,
-      buddyCreated: !existingBuddy
-    };
+    return result;
   },
 });
 

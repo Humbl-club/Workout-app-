@@ -1,28 +1,39 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { WorkoutPlan, PlanDay, PlanExercise, DailyRoutine, UserProfile } from '../types';
-import { CoffeeIcon, TimerIcon, SignOutIcon, ChevronDownIcon, SparklesIcon, RepeatIcon, ClockIcon, ZapIcon, PercentIcon, TrendingUpIcon, SpeedometerIcon, CogIcon, QuestionMarkCircleIcon, FlameIcon, DumbbellIcon } from '../components/icons';
-import { MessageCircle, Bot } from 'lucide-react';
+import { CoffeeIcon, TimerIcon, ChevronDownIcon, SparklesIcon, RepeatIcon, ClockIcon, ZapIcon, PercentIcon, TrendingUpIcon, SpeedometerIcon, CogIcon, QuestionMarkCircleIcon, FlameIcon, DumbbellIcon } from '../components/icons';
 import { useClerk, useUser } from '@clerk/clerk-react';
 import { notify } from '../components/layout/Toast';
 import { Card, CardHeader, CardContent, CardFooter, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { IntensityBadge } from '../components/ui/intensity-badge';
+import { NotificationSkeleton } from '../components/ui/skeleton';
 import { cn } from '../lib/utils';
 import { calculateWorkoutIntensity, estimateCalories, getWorkoutType } from '../lib/workoutUtils';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { XMarkIcon } from '../components/icons';
-import StreakCounter from '../components/StreakCounter';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '../components/ui/PullToRefreshIndicator';
+
+/* ═══════════════════════════════════════════════════════════════
+   HOMEPAGE - Phase 9.4 Page Redesign
+
+   Main dashboard showing workout plan overview.
+   iPhone-optimized with safe areas and touch targets.
+   Uses design tokens throughout.
+   ═══════════════════════════════════════════════════════════════ */
 
 type SessionType = PlanDay | DailyRoutine;
 
 interface HomePageProps {
     plan: WorkoutPlan;
     onStartSession: (session: SessionType) => void;
+    onQuickStartSession?: (session: SessionType) => void; // Bypass pre-workout screen
     onOpenChat: () => void;
     userProfile?: UserProfile | null;
+    onRefreshPlan?: () => Promise<void>;
 }
 
 // Helper function to get weekday names with translations
@@ -47,15 +58,33 @@ const getShortDays = (t: (key: string) => string): string[] => [
     t('plan.sun')
 ];
 
+// ─────────────────────────────────────────────────────────────
+// METRIC TAG - Compact metric display
+// ─────────────────────────────────────────────────────────────
+
 const MetricTag: React.FC<{ icon: React.ElementType; value: string | number | null | undefined }> = ({ icon: Icon, value }) => {
     if (!value) return null;
     return (
-        <div className="flex items-center gap-1.5 bg-[var(--surface-secondary)] px-3 py-1.5 rounded-md border border-[var(--border)]">
+        <div
+            className={cn(
+                "flex items-center gap-[var(--space-1-5)]",
+                "bg-[var(--surface-secondary)]",
+                "px-[var(--space-3)] py-[var(--space-1-5)]",
+                "rounded-[var(--radius-md)]",
+                "border border-[var(--border-subtle)]"
+            )}
+        >
             <Icon className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
-            <span className="text-[13px] font-medium text-[var(--text-secondary)]">{value}</span>
+            <span className="text-[var(--text-sm)] font-[var(--weight-medium)] text-[var(--text-secondary)]">
+                {value}
+            </span>
         </div>
     );
 };
+
+// ─────────────────────────────────────────────────────────────
+// EXERCISE ROW - Individual exercise display
+// ─────────────────────────────────────────────────────────────
 
 const ExerciseRow: React.FC<{ exercise: PlanExercise, style: React.CSSProperties; index: number }> = ({ exercise, style, index }) => {
     const { t } = useTranslation();
@@ -72,19 +101,35 @@ const ExerciseRow: React.FC<{ exercise: PlanExercise, style: React.CSSProperties
     };
 
     return (
-        <div className="py-4 flex flex-col items-start animate-fade-in-up" style={{ ...style, animationDelay: `${index * 40}ms` }}>
-            <div className="flex items-center gap-2.5 w-full">
-                <p className="font-semibold text-[16px] text-[var(--text-primary)] flex-1">{exercise.exercise_name}</p>
+        <div
+            className="py-[var(--space-4)] flex flex-col items-start animate-fade-in-up"
+            style={{ ...style, animationDelay: `${index * 40}ms` }}
+        >
+            <div className="flex items-center gap-[var(--space-2-5)] w-full">
+                <p className="font-[var(--weight-semibold)] text-[var(--text-base)] text-[var(--text-primary)] flex-1">
+                    {exercise.exercise_name}
+                </p>
                 <button
                     onClick={handleExerciseInfo}
-                    className="p-2 rounded-lg hover:bg-[var(--surface-secondary)] active:bg-[var(--surface-hover)] transition-all"
+                    className={cn(
+                        "p-[var(--space-2)] rounded-[var(--radius-lg)]",
+                        "min-w-[var(--height-touch-min)] min-h-[var(--height-touch-min)]",
+                        "flex items-center justify-center",
+                        "hover:bg-[var(--surface-secondary)]",
+                        "active:bg-[var(--surface-hover)]",
+                        "transition-all duration-[var(--duration-fast)]"
+                    )}
                     aria-label={`Info about ${exercise.exercise_name}`}
                 >
-                    <QuestionMarkCircleIcon className="w-5 h-5 text-[var(--text-tertiary)] hover:text-[var(--accent)] transition-colors" />
+                    <QuestionMarkCircleIcon className="w-5 h-5 text-[var(--text-tertiary)] hover:text-[var(--brand-primary)] transition-colors" />
                 </button>
             </div>
-            {exercise.notes && <p className="text-[13px] text-[var(--text-secondary)] mt-1.5 leading-relaxed">{exercise.notes}</p>}
-            <div className="flex items-center flex-wrap gap-2 mt-3">
+            {exercise.notes && (
+                <p className="text-[var(--text-sm)] text-[var(--text-secondary)] mt-[var(--space-1-5)] leading-[var(--leading-relaxed)]">
+                    {exercise.notes}
+                </p>
+            )}
+            <div className="flex items-center flex-wrap gap-[var(--space-2)] mt-[var(--space-3)]">
                 {setsReps && <MetricTag icon={RepeatIcon} value={setsReps} />}
                 {mt?.rest_period_s && <MetricTag icon={ClockIcon} value={`${mt.rest_period_s}s`} />}
                 {rpe && <MetricTag icon={ZapIcon} value={`RPE ${rpe}`} />}
@@ -97,13 +142,18 @@ const ExerciseRow: React.FC<{ exercise: PlanExercise, style: React.CSSProperties
     );
 };
 
-const GlassCard: React.FC<{
+// ─────────────────────────────────────────────────────────────
+// WORKOUT CARD - Today's workout display
+// ─────────────────────────────────────────────────────────────
+
+const WorkoutCard: React.FC<{
     session: SessionType;
     title: string;
     onStartSession: (session: SessionType) => void;
+    onQuickStartSession?: (session: SessionType) => void;
     isPrimary?: boolean;
     userWeightKg?: number;
-}> = ({ session, title, onStartSession, isPrimary = false, userWeightKg }) => {
+}> = ({ session, title, onStartSession, onQuickStartSession, isPrimary = false, userWeightKg }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     const exercises = useMemo(() => {
@@ -118,7 +168,6 @@ const GlassCard: React.FC<{
 
     const hasWorkout = exercises.length > 0;
 
-    // Calculate intensity for workout preview
     const intensity = useMemo(() => {
         if ('blocks' in session && session.blocks) {
             return calculateWorkoutIntensity(session as PlanDay);
@@ -127,8 +176,53 @@ const GlassCard: React.FC<{
     }, [session]);
 
     const estimatedDuration = useMemo(() => {
-        return Math.round(exercises.length * 3.5); // ~3.5 min per exercise
-    }, [exercises]);
+        // Use session's estimated_duration if available (especially for cardio sessions)
+        if ((session as any).estimated_duration) {
+            return (session as any).estimated_duration;
+        }
+
+        // Calculate based on exercises, accounting for cardio duration
+        let total = 0;
+        for (const ex of exercises) {
+            const name = (ex.exercise_name || '').toLowerCase();
+            const isCardio = name.includes('run') || name.includes('bike') || name.includes('row') ||
+                            name.includes('cycle') || name.includes('swim') || name.includes('treadmill') ||
+                            name.includes('elliptical') || name.includes('cardio') || name.includes('jog') ||
+                            name.includes('walk') || name.includes('sprint') || name.includes('hiit');
+
+            if (isCardio) {
+                const metrics = ex.metrics_template as any;
+
+                // Check for interval training (sets × (work + rest))
+                if (metrics?.target_sets && (metrics?.work_duration_s || metrics?.rest_duration_s)) {
+                    const sets = metrics.target_sets || 8;
+                    const workTime = metrics.work_duration_s || 20;
+                    const restTime = metrics.rest_duration_s || 40;
+                    total += (sets * (workTime + restTime)) / 60; // Convert to minutes
+                }
+                // Check for regular duration
+                else if (metrics?.target_duration_minutes) {
+                    total += metrics.target_duration_minutes;
+                }
+                else if (metrics?.target_duration_s) {
+                    total += metrics.target_duration_s / 60; // Convert seconds to minutes
+                }
+                // Check for distance-based (estimate ~5 min per km, 3 min per 500m)
+                else if (metrics?.target_distance_km) {
+                    total += metrics.target_distance_km * 5;
+                }
+                else if (metrics?.target_distance_m) {
+                    total += (metrics.target_distance_m / 500) * 3;
+                }
+                else {
+                    total += 20; // Default cardio: 20 min
+                }
+            } else {
+                total += 4; // Strength exercises: ~4 min each
+            }
+        }
+        return Math.round(total);
+    }, [exercises, session]);
 
     const estimatedCals = useMemo(() => {
         const type = 'blocks' in session ? getWorkoutType(session as PlanDay) : 'mixed';
@@ -137,70 +231,84 @@ const GlassCard: React.FC<{
 
     return (
         <Card
+            variant={isPrimary ? "premium" : "default"}
             className={cn(
-                "group relative overflow-hidden transition-all duration-500",
-                isPrimary && "card-active card-glow"
+                "group relative overflow-hidden",
+                "transition-all duration-[var(--duration-normal)]"
             )}
         >
-            {/* Enhanced gradient overlay on hover */}
-            <div className="absolute inset-0 bg-gradient-to-br from-[var(--primary)]/8 via-[var(--accent)]/5 to-[var(--accent-cardio)]/6 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+            {/* Gradient overlay on hover */}
+            <div
+                className={cn(
+                    "absolute inset-0",
+                    "bg-gradient-to-br from-[var(--brand-primary)]/8 via-[var(--brand-primary)]/5 to-transparent",
+                    "opacity-0 group-hover:opacity-100",
+                    "transition-opacity duration-[var(--duration-normal)]",
+                    "pointer-events-none"
+                )}
+            />
 
-            <CardHeader className={cn("p-4 sm:p-5 relative z-10", isPrimary && "relative")}>
-                <div className="flex justify-between items-start gap-3">
-                    <div className="flex-1 min-w-0 space-y-2">
-                        {/* Animated label with intensity */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-bold">
+            <CardHeader className={cn("p-[var(--space-4)] sm:p-[var(--space-5)] relative z-10")}>
+                <div className="flex justify-between items-start gap-[var(--space-3)]">
+                    <div className="flex-1 min-w-0 space-y-[var(--space-2)]">
+                        {/* Label row */}
+                        <div className="flex items-center gap-[var(--space-2)] flex-wrap">
+                            <span className="text-[var(--text-2xs)] uppercase tracking-[var(--tracking-widest)] text-[var(--text-tertiary)] font-[var(--weight-bold)]">
                                 {title}
                             </span>
                             {isPrimary && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--accent)] text-white text-[9px] font-bold uppercase tracking-wide animate-fade-in">
+                                <Badge variant="default" size="sm">
                                     <SparklesIcon className="w-3 h-3" />
                                     Today
-                                </span>
+                                </Badge>
                             )}
                             {hasWorkout && (
                                 <IntensityBadge level={intensity.level} />
                             )}
                         </div>
 
-                        {/* Enhanced title */}
-                        <h3 className="text-[17px] sm:text-[18px] font-bold text-[var(--text-primary)] leading-tight">
-                            {session.focus}
+                        {/* Title */}
+                        <h3 className="text-[var(--text-lg)] font-[var(--weight-bold)] text-[var(--text-primary)] leading-[var(--leading-tight)]">
+                            {(session as any).focus || (session as any).session_name || 'Workout'}
                         </h3>
 
-                        {/* Enhanced metrics with calories */}
-                        <div className="flex items-center gap-2 flex-wrap text-[12px] text-[var(--text-secondary)]">
-                            <span className="flex items-center gap-1">
+                        {/* Metrics row */}
+                        <div className="flex items-center gap-[var(--space-2)] flex-wrap text-[var(--text-xs)] text-[var(--text-secondary)]">
+                            <span className="flex items-center gap-[var(--space-1)]">
                                 <ClockIcon className="w-3.5 h-3.5" />
                                 ~{estimatedDuration} min
                             </span>
-                            <span className="w-1 h-1 rounded-full bg-[var(--border-strong)]"></span>
-                            <span className="flex items-center gap-1">
+                            <span className="w-1 h-1 rounded-full bg-[var(--border-strong)]" />
+                            <span className="flex items-center gap-[var(--space-1)]">
                                 <DumbbellIcon className="w-3.5 h-3.5" />
                                 {exercises.length} exercises
                             </span>
-                            <span className="w-1 h-1 rounded-full bg-[var(--border-strong)]"></span>
-                            <span className="flex items-center gap-1">
+                            <span className="w-1 h-1 rounded-full bg-[var(--border-strong)]" />
+                            <span className="flex items-center gap-[var(--space-1)]">
                                 <FlameIcon className="w-3.5 h-3.5" />
                                 ~{estimatedCals} cal
                             </span>
                         </div>
                     </div>
 
-                    {/* Improved expand/collapse button */}
+                    {/* Expand button */}
                     {hasWorkout && (
                         <button
                             onClick={() => setIsExpanded(!isExpanded)}
                             className={cn(
-                                "p-2 rounded-lg transition-all duration-300",
-                                "bg-[var(--surface-secondary)] hover:bg-[var(--accent-light)]",
-                                "hover:text-[var(--accent)]"
+                                "p-[var(--space-2)]",
+                                "min-w-[var(--height-touch-min)] min-h-[var(--height-touch-min)]",
+                                "flex items-center justify-center",
+                                "rounded-[var(--radius-lg)]",
+                                "bg-[var(--surface-secondary)]",
+                                "hover:bg-[var(--brand-primary-subtle)]",
+                                "hover:text-[var(--brand-primary)]",
+                                "transition-all duration-[var(--duration-fast)]"
                             )}
                             aria-label={isExpanded ? 'Collapse' : 'Expand'}
                         >
                             <ChevronDownIcon className={cn(
-                                "w-4 h-4 transition-transform duration-300",
+                                "w-4 h-4 transition-transform duration-[var(--duration-fast)]",
                                 isExpanded && "rotate-180"
                             )} />
                         </button>
@@ -208,45 +316,216 @@ const GlassCard: React.FC<{
                 </div>
             </CardHeader>
 
-            {/* Smooth expansion with stagger animation */}
+            {/* Expandable exercise list with block separation */}
             <div className={cn(
-                "overflow-hidden transition-all duration-500",
+                "overflow-hidden transition-all duration-[var(--duration-normal)]",
                 isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
             )}>
-                <CardContent className="px-4 sm:px-5 pt-0">
-                    <div className="pt-4 border-t border-[var(--border)]">
-                        <div className="divide-y divide-[var(--border)]">
-                            {exercises.map((ex, index) => (
-                                <ExerciseRow
-                                    key={`${ex.exercise_name}-${index}`}
-                                    exercise={ex}
-                                    index={index}
-                                    style={{ animationDelay: `${index * 40}ms` }}
-                                />
-                            ))}
-                        </div>
+                <CardContent className="px-[var(--space-4)] sm:px-[var(--space-5)] pt-0">
+                    <div className="pt-[var(--space-4)] border-t border-[var(--border-subtle)] space-y-[var(--space-6)]">
+                        {('blocks' in session && Array.isArray(session.blocks)) ? (
+                            // Display with block separation
+                            session.blocks.map((block, blockIdx) => {
+                                const blockExercises = Array.isArray(block.exercises) ? block.exercises : [];
+                                if (blockExercises.length === 0) return null;
+
+                                return (
+                                    <div key={blockIdx} className="space-y-[var(--space-2)]">
+                                        {/* Block header */}
+                                        <div className="flex items-center gap-[var(--space-2)]">
+                                            <div className="h-px flex-1 bg-[var(--border-default)]"></div>
+                                            <p className="text-[var(--text-2xs)] font-[var(--weight-bold)] text-[var(--text-tertiary)] uppercase tracking-wider">
+                                                {block.title || `Block ${blockIdx + 1}`}
+                                                {block.type === 'superset' && ' • Superset'}
+                                                {block.type === 'amrap' && ' • AMRAP'}
+                                            </p>
+                                            <div className="h-px flex-1 bg-[var(--border-default)]"></div>
+                                        </div>
+
+                                        {/* Block exercises */}
+                                        <div className="divide-y divide-[var(--border-subtle)]">
+                                            {blockExercises.map((ex, exIdx) => (
+                                                <ExerciseRow
+                                                    key={`${ex.exercise_name}-${blockIdx}-${exIdx}`}
+                                                    exercise={ex}
+                                                    index={exIdx}
+                                                    style={{ animationDelay: `${exIdx * 40}ms` }}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            // Fallback: flat list
+                            <div className="divide-y divide-[var(--border-subtle)]">
+                                {exercises.map((ex, index) => (
+                                    <ExerciseRow
+                                        key={`${ex.exercise_name}-${index}`}
+                                        exercise={ex}
+                                        index={index}
+                                        style={{ animationDelay: `${index * 40}ms` }}
+                                    />
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </CardContent>
             </div>
 
             {hasWorkout && (
-                <CardFooter className="p-4 sm:p-5 pt-3">
-                    <Button
-                        onClick={() => onStartSession(session)}
-                        title="Start workout"
-                        className="w-full"
-                        variant={isPrimary ? "accent" : "default"}
-                    >
-                        <TimerIcon className="w-4 h-4" />
-                        <span>Start Workout</span>
-                    </Button>
+                <CardFooter className="p-[var(--space-4)] sm:p-[var(--space-5)] pt-[var(--space-3)]">
+                    <div className="flex gap-[var(--space-2)] w-full">
+                        <Button
+                            onClick={() => onStartSession(session)}
+                            variant={isPrimary ? "primary" : "secondary"}
+                            size="lg"
+                            fullWidth
+                            leftIcon={<TimerIcon className="w-4 h-4" />}
+                        >
+                            Start Workout
+                        </Button>
+                        {onQuickStartSession && (
+                            <Button
+                                onClick={() => onQuickStartSession(session)}
+                                variant="soft"
+                                size="lg"
+                                leftIcon={<ZapIcon className="w-4 h-4" />}
+                                className="shrink-0"
+                            >
+                                Quick
+                            </Button>
+                        )}
+                    </div>
                 </CardFooter>
             )}
         </Card>
-    )
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
+// DAY SELECTOR BUTTON
+// ─────────────────────────────────────────────────────────────
+
+interface DaySelectorButtonProps {
+    day: PlanDay;
+    index: number;
+    isToday: boolean;
+    isSelected: boolean;
+    isPast: boolean;
+    shortDay: string;
+    onClick: () => void;
+    buttonRef: (el: HTMLButtonElement | null) => void;
 }
 
-export default function HomePage({ plan, onStartSession, onOpenChat, userProfile }: HomePageProps) {
+const DaySelectorButton: React.FC<DaySelectorButtonProps> = ({
+    day,
+    index,
+    isToday,
+    isSelected,
+    isPast,
+    shortDay,
+    onClick,
+    buttonRef,
+}) => {
+    const hasExercises = (day.blocks || []).flatMap(b => b.exercises || []).length > 0;
+
+    return (
+        <button
+            ref={buttonRef}
+            onClick={onClick}
+            role="tab"
+            aria-selected={isSelected}
+            aria-label={`${shortDay}${hasExercises ? ', workout day' : ', rest day'}${isToday ? ', today' : ''}`}
+            className={cn(
+                // Base - iPhone touch target compliant
+                "relative flex-shrink-0",
+                "min-w-[52px] min-h-[var(--height-button)]",
+                "px-[var(--space-3)] py-[var(--space-2-5)]",
+                "rounded-[var(--radius-xl)]",
+                "font-[var(--weight-semibold)] text-[var(--text-sm)]",
+                "transition-all duration-[var(--duration-fast)] ease-[var(--ease-default)]",
+                "border",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2",
+                "active:scale-[0.96]",
+
+                // Selected state
+                isSelected && [
+                    "border-[var(--brand-primary)]",
+                    "bg-[var(--brand-primary-subtle)]",
+                    "text-[var(--brand-primary)]",
+                    "shadow-[var(--shadow-md)]",
+                ],
+
+                // Today (not selected)
+                isToday && !isSelected && [
+                    "border-[var(--brand-primary)]/40",
+                    "bg-[var(--surface-primary)]",
+                    "text-[var(--text-primary)]",
+                ],
+
+                // Future day (not selected, not today)
+                !isSelected && !isToday && !isPast && [
+                    "border-[var(--border-default)]",
+                    "bg-[var(--surface-primary)]",
+                    "text-[var(--text-secondary)]",
+                    "hover:border-[var(--border-strong)]",
+                    "hover:bg-[var(--surface-secondary)]",
+                ],
+
+                // Past day (not selected)
+                isPast && !isSelected && [
+                    "border-[var(--border-subtle)]",
+                    "bg-[var(--surface-primary)]",
+                    "text-[var(--text-tertiary)]",
+                    "opacity-60 hover:opacity-80",
+                ]
+            )}
+        >
+            <div className="text-center">
+                {/* Day abbreviation */}
+                <div className={cn(
+                    "text-[var(--text-2xs)] font-[var(--weight-bold)] uppercase tracking-[var(--tracking-wider)] mb-[var(--space-1)]",
+                    isSelected ? "opacity-100" : "opacity-70"
+                )}>
+                    {shortDay}
+                </div>
+
+                {/* Workout indicator dot */}
+                <div className={cn(
+                    "w-2 h-2 rounded-full mx-auto transition-all duration-[var(--duration-fast)]",
+                    hasExercises
+                        ? isSelected
+                            ? "bg-[var(--brand-primary)] shadow-[var(--shadow-glow-brand)]"
+                            : "bg-[var(--brand-primary)]"
+                        : "bg-[var(--border-default)]"
+                )} />
+            </div>
+
+            {/* Today badge */}
+            {isToday && !isSelected && (
+                <div className={cn(
+                    "absolute -top-1 left-1/2 -translate-x-1/2",
+                    "px-[var(--space-1-5)] py-[var(--space-0-5)]",
+                    "rounded-full",
+                    "bg-[var(--brand-primary)]",
+                    "text-[var(--text-on-brand)]",
+                    "text-[7px] font-[var(--weight-bold)]",
+                    "uppercase tracking-[var(--tracking-wide)]",
+                    "shadow-[var(--shadow-sm)]"
+                )}>
+                    Today
+                </div>
+            )}
+        </button>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
+// HOMEPAGE MAIN COMPONENT
+// ─────────────────────────────────────────────────────────────
+
+export default function HomePage({ plan, onStartSession, onQuickStartSession, onOpenChat, userProfile, onRefreshPlan }: HomePageProps) {
     const { t } = useTranslation();
     const { user } = useUser();
     const userId = user?.id || null;
@@ -256,10 +535,23 @@ export default function HomePage({ plan, onStartSession, onOpenChat, userProfile
     const [selectedDayIndex, setSelectedDayIndex] = useState(todayIndex);
     const daySelectorRef = useRef<HTMLDivElement>(null);
     const dayButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+    // Pull-to-refresh
+    const handleRefresh = async () => {
+        if (onRefreshPlan) {
+            await onRefreshPlan();
+        }
+        // Small delay for better UX
+        await new Promise(resolve => setTimeout(resolve, 500));
+    };
+
+    const { pullDistance, isRefreshing, isTriggered } = usePullToRefresh({
+        onRefresh: handleRefresh,
+    });
+
     const weightKg = useMemo(() => {
         const w = userProfile?.bodyMetrics?.weight;
         if (!w || Number.isNaN(w)) return 70;
-        // Weight is stored in kg (metric-only inputs)
         return w;
     }, [userProfile]);
 
@@ -275,11 +567,22 @@ export default function HomePage({ plan, onStartSession, onOpenChat, userProfile
     const activeDayPlan = weeklyPlan[selectedDayIndex];
     const dailyRoutine = plan?.dailyRoutine;
 
+    // Handle 2x daily training - check if day has sessions array
+    const hasTwoADaySessions = activeDayPlan?.sessions && Array.isArray(activeDayPlan.sessions) && activeDayPlan.sessions.length > 0;
+
+    // For 2x daily, get AM and PM sessions
+    const amSession = hasTwoADaySessions
+        ? activeDayPlan.sessions.find((s: any) => s.time_of_day === 'morning')
+        : null;
+    const pmSession = hasTwoADaySessions
+        ? activeDayPlan.sessions.find((s: any) => s.time_of_day === 'evening' || s.time_of_day === 'afternoon')
+        : null;
+
     // Auto-scroll to selected day
     useEffect(() => {
         const selectedButton = dayButtonRefs.current[selectedDayIndex];
         const container = daySelectorRef.current;
-        
+
         if (selectedButton && container) {
             const buttonLeft = selectedButton.offsetLeft;
             const buttonWidth = selectedButton.offsetWidth;
@@ -288,7 +591,6 @@ export default function HomePage({ plan, onStartSession, onOpenChat, userProfile
             const buttonRight = buttonLeft + buttonWidth;
             const containerRight = scrollLeft + containerWidth;
 
-            // Scroll if button is outside visible area
             if (buttonLeft < scrollLeft) {
                 container.scrollTo({ left: buttonLeft - 8, behavior: 'smooth' });
             } else if (buttonRight > containerRight) {
@@ -298,147 +600,171 @@ export default function HomePage({ plan, onStartSession, onOpenChat, userProfile
     }, [selectedDayIndex]);
 
     const { signOut } = useClerk();
-    
-    const handleSignOut = async () => {
-        try {
-            await signOut();
-        } catch (error) {
-            console.error("Error signing out: ", error);
-        }
-    };
-    
+
     const getGreeting = () => {
         const hour = new Date().getHours();
         if (hour < 12) return t('home.greeting.morning');
         if (hour < 18) return t('home.greeting.afternoon');
         return t('home.greeting.evening');
-    }
+    };
 
+    // Error state
     if (!activeDayPlan) {
         return (
-            <div className="w-full max-w-2xl mx-auto px-5 py-8 flex-1 flex flex-col items-center justify-center text-center">
-                <div className="w-20 h-20 bg-[var(--surface)] rounded-full flex items-center justify-center mb-4">
-                    <CoffeeIcon className="w-12 h-12 text-[var(--error)]" />
+            <div className={cn(
+                "w-full max-w-2xl mx-auto",
+                "px-[var(--space-5)] py-[var(--space-8)]",
+                "flex-1 flex flex-col items-center justify-center text-center"
+            )}>
+                <div className={cn(
+                    "w-20 h-20",
+                    "bg-[var(--surface-secondary)]",
+                    "rounded-full",
+                    "flex items-center justify-center",
+                    "mb-[var(--space-4)]"
+                )}>
+                    <CoffeeIcon className="w-12 h-12 text-[var(--status-error-bg)]" />
                 </div>
-                <h2 className="text-2xl font-bold text-[var(--text-primary)]">Something went wrong</h2>
-                <p className="text-[var(--text-secondary)] mt-2 max-w-xs">Could not find a workout plan for today.</p>
+                <h2 className="text-[var(--text-2xl)] font-[var(--weight-bold)] text-[var(--text-primary)]">
+                    Something went wrong
+                </h2>
+                <p className="text-[var(--text-secondary)] mt-[var(--space-2)] max-w-xs">
+                    Could not find a workout plan for today.
+                </p>
             </div>
-        )
+        );
     }
 
-    // FIX: Updated `hasWorkout` to check for exercises within blocks, aligning with the new data structure.
-    const hasWorkout = (Array.isArray(activeDayPlan.blocks) ? activeDayPlan.blocks : [])
-        .flatMap(b => Array.isArray(b.exercises) ? b.exercises : [])
-        .length > 0;
+    // Check if there's a workout - handle both single session and 2x daily
+    const hasWorkout = hasTwoADaySessions
+        ? (amSession || pmSession) // 2x daily: has at least one session
+        : (Array.isArray(activeDayPlan.blocks) ? activeDayPlan.blocks : [])
+            .flatMap(b => Array.isArray(b.exercises) ? b.exercises : [])
+            .length > 0;
 
     return (
-        <div className="w-full max-w-lg mx-auto px-3 sm:px-4 pt-4 sm:pt-6 pb-[calc(4rem+env(safe-area-inset-bottom))] animate-fade-in flex-1 flex flex-col">
-            <header className="mb-5 sm:mb-6">
-                <div className="flex items-center justify-between mb-3 sm:mb-4">
-                    <div className="space-y-1">
-                        <div className="text-[26px] sm:text-[28px] font-black tracking-normal leading-tight" style={{ fontFamily: "'Inter', 'SF Pro Display', system-ui, sans-serif" }}>
+        <>
+            {/* Pull-to-refresh indicator */}
+            <PullToRefreshIndicator
+                distance={pullDistance}
+                isTriggered={isTriggered}
+                isRefreshing={isRefreshing}
+            />
+
+            <div className={cn(
+                "w-full max-w-lg mx-auto",
+                "px-[var(--space-4)]",
+                "pt-[max(var(--space-4),env(safe-area-inset-top))]",
+                "pb-[calc(var(--height-tab-bar)+var(--space-6)+env(safe-area-inset-bottom))]",
+                "animate-fade-in flex-1 flex flex-col"
+            )}>
+                {/* ─────────────────────────────────────────────────────────────
+                    HEADER
+                   ───────────────────────────────────────────────────────────── */}
+            <header className="mb-[var(--space-5)] sm:mb-[var(--space-6)]">
+                <div className="flex items-center justify-between mb-[var(--space-3)] sm:mb-[var(--space-4)]">
+                    <div className="space-y-[var(--space-1)]">
+                        {/* Logo */}
+                        <div
+                            className="text-[26px] sm:text-[28px] font-[var(--weight-black)] tracking-normal leading-tight"
+                            style={{ fontFamily: "'Inter', 'SF Pro Display', system-ui, sans-serif" }}
+                        >
                             <span className="text-[var(--text-primary)]">RE</span>
-                            <span className="text-[var(--accent)]">BLD</span>
+                            <span className="text-[var(--brand-primary)]">BLD</span>
                         </div>
-                        <p className="text-[12px] font-medium text-[var(--text-tertiary)] flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse"></span>
+                        {/* Date */}
+                        <p className="text-[var(--text-xs)] font-[var(--weight-medium)] text-[var(--text-tertiary)]">
                             {new Date().toLocaleDateString('en-US', {
-                                weekday: 'short',
+                                weekday: 'long',
                                 month: 'short',
                                 day: 'numeric'
                             })}
                         </p>
                     </div>
-                    <div className="text-right space-y-1">
-                        <p className="text-[13px] font-semibold text-[var(--text-primary)]">
-                            {getGreeting()}
-                        </p>
-                        <div className="flex items-center gap-2">
-                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--accent-light)] text-[var(--accent)] text-[11px] font-bold">
-                                <span className="w-1 h-1 rounded-full bg-[var(--accent)]"></span>
-                                7 day
-                            </span>
-                        </div>
-                    </div>
+                    {/* Greeting */}
+                    <p className="text-[var(--text-sm)] font-[var(--weight-semibold)] text-[var(--text-secondary)]">
+                        {getGreeting()}
+                    </p>
                 </div>
 
-                {/* Day Selector with gradient fades */}
-                <div className="relative py-3 -mx-3 px-3">
-                    <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-[var(--background-primary)] to-transparent pointer-events-none z-10"></div>
-                    <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-[var(--background-primary)] to-transparent pointer-events-none z-10"></div>
+                {/* ─────────────────────────────────────────────────────────────
+                    DAY SELECTOR
+                   ───────────────────────────────────────────────────────────── */}
+                <div className="relative py-[var(--space-2)] -mx-[var(--space-4)] px-[var(--space-4)]">
+                    {/* Fade gradients */}
+                    <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-[var(--bg-primary)] to-transparent pointer-events-none z-10" />
+                    <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-[var(--bg-primary)] to-transparent pointer-events-none z-10" />
 
                     <div
                         ref={daySelectorRef}
-                        className="day-selector-scroll flex gap-2 overflow-x-auto scroll-smooth hide-scrollbar py-3 overflow-visible"
-                        style={{
-                            WebkitOverflowScrolling: 'touch'
-                        }}
+                        className={cn(
+                            "flex gap-[var(--space-1-5)]",
+                            "overflow-x-auto scroll-smooth",
+                            "py-[var(--space-2)] overflow-visible",
+                            "hide-scrollbar"
+                        )}
+                        style={{ WebkitOverflowScrolling: 'touch' }}
+                        role="tablist"
+                        aria-label="Select workout day"
                     >
-                        {weeklyPlan.map((day, index) => {
-                            const isToday = index === todayIndex;
-                            const isSelected = index === selectedDayIndex;
-
-                            return (
-                                <button
-                                    key={index}
-                                    ref={(el) => { dayButtonRefs.current[index] = el; }}
-                                    onClick={() => setSelectedDayIndex(index)}
-                                    className={cn(
-                                        "relative flex-shrink-0 px-4 py-3 rounded-xl font-bold text-[13px]",
-                                        "transition-all duration-300 min-w-[68px]",
-                                        "border-2",
-                                        isSelected
-                                            ? "border-[var(--primary)] bg-gradient-to-br from-[var(--primary-light)] to-[var(--accent-light)] text-[var(--primary)] shadow-lg ring-2 ring-[var(--primary)]/30 ring-offset-2 ring-offset-[var(--background-primary)]"
-                                            : "border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--primary-light)] hover:shadow-sm active:scale-95"
-                                    )}
-                                >
-                                    <div className="text-center">
-                                        <div className="text-[10px] font-bold uppercase tracking-wider mb-0.5 opacity-70">
-                                            {shortDays[index]}
-                                        </div>
-                                        {/* Visual indicator for workout/rest day */}
-                                        <div className={cn(
-                                            "w-1.5 h-1.5 rounded-full mx-auto mt-1 transition-all",
-                                            (day.blocks || []).flatMap(b => b.exercises || []).length > 0
-                                                ? isSelected
-                                                    ? "bg-[var(--primary)] shadow-[0_0_8px_rgba(99,102,241,0.6)]"
-                                                    : "bg-[var(--accent)]"
-                                                : "bg-[var(--text-tertiary)]"
-                                        )}></div>
-                                    </div>
-
-                                    {/* Today indicator with glow */}
-                                    {isToday && !isSelected && (
-                                        <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[var(--accent)] border-2 border-[var(--background-primary)] animate-pulse shadow-[0_0_10px_rgba(245,158,11,0.6)]"></div>
-                                    )}
-                                </button>
-                            );
-                        })}
+                        {weeklyPlan.map((day, index) => (
+                            <DaySelectorButton
+                                key={index}
+                                day={day}
+                                index={index}
+                                isToday={index === todayIndex}
+                                isSelected={index === selectedDayIndex}
+                                isPast={index < todayIndex}
+                                shortDay={shortDays[index]}
+                                onClick={() => setSelectedDayIndex(index)}
+                                buttonRef={(el) => { dayButtonRefs.current[index] = el; }}
+                            />
+                        ))}
                     </div>
                 </div>
             </header>
 
-            {/* Streak Counter */}
-            {userId && <StreakCounter userId={userId} />}
+            {/* ─────────────────────────────────────────────────────────────
+                MAIN CONTENT
+               ───────────────────────────────────────────────────────────── */}
+            <main className="flex-1 space-y-[var(--space-3)]">
+                {/* Notification loading skeleton */}
+                {notifications === undefined && userId && (
+                    <NotificationSkeleton />
+                )}
 
-            <main className="flex-1 space-y-2.5 sm:space-y-3">
-                {/* Buddy Notifications Banner */}
+                {/* Buddy notification banner */}
                 {notifications && notifications.length > 0 && (
-                    <div className="mb-4 p-4 bg-gradient-to-r from-[var(--accent)] to-[var(--accent-dark)] text-white rounded-2xl shadow-lg animate-slide-in-right">
-                        <div className="flex items-center justify-between gap-3">
+                    <div className={cn(
+                        "mb-[var(--space-4)]",
+                        "p-[var(--space-4)]",
+                        "bg-[var(--brand-primary)]",
+                        "text-[var(--text-on-brand)]",
+                        "rounded-[var(--radius-2xl)]",
+                        "shadow-[var(--shadow-md)]",
+                        "animate-fade-in"
+                    )}>
+                        <div className="flex items-center justify-between gap-[var(--space-3)]">
                             <div className="flex-1">
-                                <p className="text-[13px] font-bold">
+                                <p className="text-[var(--text-sm)] font-[var(--weight-bold)]">
                                     {notifications[0].buddyName} {notifications[0].message}
                                 </p>
-                                <p className="text-[11px] opacity-80 mt-1">
+                                <p className="text-[var(--text-xs)] opacity-80 mt-[var(--space-1)]">
                                     {new Date(notifications[0].createdAt).toLocaleTimeString()}
                                 </p>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-[var(--space-2)]">
                                 {hasWorkout && (
                                     <button
                                         onClick={() => onStartSession(activeDayPlan)}
-                                        className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg font-bold text-[13px] transition-all active:scale-95"
+                                        className={cn(
+                                            "px-[var(--space-4)] py-[var(--space-2)]",
+                                            "bg-white/20 hover:bg-white/30",
+                                            "rounded-[var(--radius-lg)]",
+                                            "font-[var(--weight-bold)] text-[var(--text-sm)]",
+                                            "transition-all duration-[var(--duration-fast)]",
+                                            "active:scale-95"
+                                        )}
                                     >
                                         Start Now!
                                     </button>
@@ -449,7 +775,14 @@ export default function HomePage({ plan, onStartSession, onOpenChat, userProfile
                                             notificationId: notifications[0]._id
                                         });
                                     }}
-                                    className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-all"
+                                    className={cn(
+                                        "p-[var(--space-2)]",
+                                        "min-w-[var(--height-touch-min)] min-h-[var(--height-touch-min)]",
+                                        "flex items-center justify-center",
+                                        "rounded-[var(--radius-lg)]",
+                                        "bg-white/10 hover:bg-white/20",
+                                        "transition-all duration-[var(--duration-fast)]"
+                                    )}
                                 >
                                     <XMarkIcon className="w-4 h-4" />
                                 </button>
@@ -458,72 +791,127 @@ export default function HomePage({ plan, onStartSession, onOpenChat, userProfile
                     </div>
                 )}
 
+                {/* Today's workout or rest day */}
                 {hasWorkout ? (
-                    <GlassCard
-                        session={activeDayPlan}
-                        title={t('home.todaysWorkout')}
-                        onStartSession={onStartSession}
-                        isPrimary={true}
-                        userWeightKg={weightKg}
-                    />
-                ) : (
-                <Card className="text-center py-10 sm:py-12 card-glass relative overflow-hidden">
-                    {/* Gradient mesh background */}
-                    <div className="absolute inset-0 opacity-30">
-                        <div className="absolute top-0 left-1/4 w-48 h-48 bg-[var(--accent-recovery)] rounded-full blur-3xl"></div>
-                        <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-[var(--accent-mobility)] rounded-full blur-3xl"></div>
-                    </div>
-
-                    <CardContent className="pt-6 relative z-10">
-                        <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-[var(--accent-recovery)] to-[var(--success)] rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-5 shadow-lg animate-bounce-subtle">
-                            <CoffeeIcon className="h-8 w-8 sm:h-10 sm:w-10 text-white"/>
+                    hasTwoADaySessions ? (
+                        // 2x Daily Training - Show AM and PM cards
+                        <div className="space-y-[var(--space-3)]">
+                            {amSession && (
+                                <WorkoutCard
+                                    session={{ ...amSession, day_of_week: activeDayPlan.day_of_week }}
+                                    title={`☀️ ${amSession.session_name || 'Morning Session'}`}
+                                    onStartSession={onStartSession}
+                                    onQuickStartSession={onQuickStartSession}
+                                    isPrimary={true}
+                                    userWeightKg={weightKg}
+                                />
+                            )}
+                            {pmSession && (
+                                <WorkoutCard
+                                    session={{ ...pmSession, day_of_week: activeDayPlan.day_of_week }}
+                                    title={`🌙 ${pmSession.session_name || 'Evening Session'}`}
+                                    onStartSession={onStartSession}
+                                    onQuickStartSession={onQuickStartSession}
+                                    isPrimary={!amSession}
+                                    userWeightKg={weightKg}
+                                />
+                            )}
                         </div>
-                        <CardTitle className="text-2xl sm:text-3xl font-extrabold text-[var(--text-primary)] mb-2">{t('home.restDay')}</CardTitle>
-                        <CardDescription className="text-[14px] sm:text-[15px] mb-6 px-4 max-w-sm mx-auto leading-relaxed">{t('home.restDayMessage')}</CardDescription>
-                        <Button
-                            onClick={() => onOpenChat()}
-                            variant="soft"
-                            className="inline-flex items-center gap-2 shadow-md"
-                        >
-                            <SparklesIcon className="w-4 h-4" />
-                            {t('home.restDayOptions.generate')}
-                        </Button>
-                    </CardContent>
-                </Card>
-            )}
+                    ) : (
+                        // Single session day
+                        <WorkoutCard
+                            session={activeDayPlan}
+                            title={t('home.todaysWorkout')}
+                            onStartSession={onStartSession}
+                            onQuickStartSession={onQuickStartSession}
+                            isPrimary={true}
+                            userWeightKg={weightKg}
+                        />
+                    )
+                ) : (
+                    <Card variant="default" className="text-center py-[var(--space-10)] sm:py-[var(--space-12)]">
+                        <CardContent className="pt-[var(--space-6)]">
+                            <div className={cn(
+                                "w-16 h-16 sm:w-20 sm:h-20",
+                                "bg-[var(--status-success-bg)]",
+                                "rounded-full",
+                                "flex items-center justify-center",
+                                "mx-auto mb-[var(--space-4)] sm:mb-[var(--space-5)]",
+                                "shadow-[var(--shadow-md)]"
+                            )}>
+                                <CoffeeIcon className="h-8 w-8 sm:h-10 sm:w-10 text-white"/>
+                            </div>
+                            <CardTitle className="text-[var(--text-2xl)] sm:text-[var(--text-3xl)] font-[var(--weight-extrabold)] text-[var(--text-primary)] mb-[var(--space-2)]">
+                                {t('home.restDay')}
+                            </CardTitle>
+                            <CardDescription className="text-[var(--text-sm)] sm:text-[var(--text-base)] mb-[var(--space-6)] px-[var(--space-4)] max-w-sm mx-auto leading-[var(--leading-relaxed)]">
+                                {t('home.restDayMessage')}
+                            </CardDescription>
+                            <Button
+                                onClick={() => onOpenChat()}
+                                variant="secondary"
+                                leftIcon={<SparklesIcon className="w-4 h-4" />}
+                            >
+                                {t('home.restDayOptions.generate')}
+                            </Button>
+                        </CardContent>
+                    </Card>
+                )}
 
+                {/* Daily routine card */}
                 {dailyRoutine && (dailyRoutine.exercises || []).length > 0 && (
-                    <Card className="group hover:border-[var(--primary)] transition-all duration-300 cursor-pointer overflow-hidden relative">
+                    <Card
+                        variant="interactive"
+                        pressable
+                        onClick={() => onStartSession(dailyRoutine)}
+                        className="overflow-hidden relative"
+                    >
                         {/* Gradient background on hover */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-[var(--primary)]/5 to-[var(--accent-mobility)]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                        <div className={cn(
+                            "absolute inset-0",
+                            "bg-gradient-to-r from-[var(--brand-primary)]/5 to-[var(--status-success-bg)]/5",
+                            "opacity-0 group-hover:opacity-100",
+                            "transition-opacity duration-[var(--duration-fast)]",
+                            "pointer-events-none"
+                        )} />
 
-                        <button
-                            onClick={() => onStartSession(dailyRoutine)}
-                            className="w-full text-left relative z-10"
-                        >
-                            <CardContent className="px-4 sm:px-5 py-4 sm:py-5 flex items-center justify-between">
-                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                    {/* Icon */}
-                                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--primary-light)] to-[var(--accent-light)] flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
-                                        <RepeatIcon className="w-6 h-6 text-[var(--primary)]" />
-                                    </div>
-
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1">
-                                            {t('home.dailyRoutine')}
-                                        </p>
-                                        <h4 className="text-[16px] sm:text-[17px] font-bold text-[var(--text-primary)] truncate">
-                                            {dailyRoutine.focus}
-                                        </h4>
-                                    </div>
+                        <CardContent className="px-[var(--space-4)] sm:px-[var(--space-5)] py-[var(--space-4)] sm:py-[var(--space-5)] flex items-center justify-between relative z-10">
+                            <div className="flex items-center gap-[var(--space-3)] flex-1 min-w-0">
+                                {/* Icon */}
+                                <div className={cn(
+                                    "w-12 h-12",
+                                    "rounded-[var(--radius-xl)]",
+                                    "bg-gradient-to-br from-[var(--brand-primary-subtle)] to-[var(--surface-secondary)]",
+                                    "flex items-center justify-center",
+                                    "shrink-0",
+                                    "group-hover:scale-110 transition-transform duration-[var(--duration-fast)]"
+                                )}>
+                                    <RepeatIcon className="w-6 h-6 text-[var(--brand-primary)]" />
                                 </div>
 
-                                <ChevronDownIcon className="w-5 h-5 text-[var(--text-tertiary)] group-hover:text-[var(--primary)] group-hover:translate-x-1 transition-all duration-300 -rotate-90 shrink-0" />
-                            </CardContent>
-                        </button>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[var(--text-2xs)] uppercase tracking-[var(--tracking-wider)] text-[var(--text-tertiary)] font-[var(--weight-bold)] mb-[var(--space-1)]">
+                                        {t('home.dailyRoutine')}
+                                    </p>
+                                    <h4 className="text-[var(--text-base)] sm:text-[var(--text-lg)] font-[var(--weight-bold)] text-[var(--text-primary)] truncate">
+                                        {dailyRoutine?.focus || 'Daily Routine'}
+                                    </h4>
+                                </div>
+                            </div>
+
+                            <ChevronDownIcon className={cn(
+                                "w-5 h-5",
+                                "text-[var(--text-tertiary)]",
+                                "group-hover:text-[var(--brand-primary)]",
+                                "group-hover:translate-x-1",
+                                "transition-all duration-[var(--duration-fast)]",
+                                "-rotate-90 shrink-0"
+                            )} />
+                        </CardContent>
                     </Card>
                 )}
             </main>
         </div>
+        </>
     );
 }

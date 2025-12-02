@@ -21,17 +21,18 @@ export interface UsageStats {
 
 /**
  * Usage limits by tier
+ * NOTE: Limits set to unlimited for development - restore before production
  */
 export const USAGE_LIMITS: Record<UserTier, UsageLimits> = {
   free: {
-    plansPerMonth: 1,
-    chatMessagesPerMonth: 10,
-    planParsesPerMonth: 2
+    plansPerMonth: 99999,        // DEV: unlimited
+    chatMessagesPerMonth: 99999, // DEV: unlimited
+    planParsesPerMonth: 99999    // DEV: unlimited
   },
   premium: {
-    plansPerMonth: 20,
-    chatMessagesPerMonth: 500,
-    planParsesPerMonth: 50
+    plansPerMonth: 99999,
+    chatMessagesPerMonth: 99999,
+    planParsesPerMonth: 99999
   }
 };
 

@@ -42,6 +42,7 @@ interface ProgressPhotoCardProps {
     confidence: number;
   };
   onClick?: () => void;
+  key?: React.Key;
 }
 
 export default function ProgressPhotoCard({

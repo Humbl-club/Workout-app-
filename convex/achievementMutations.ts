@@ -1,5 +1,15 @@
 import { v } from "convex/values";
 import { mutation } from "./_generated/server";
+import { executeWithRollback } from "./utils/transactionHelpers";
+import {
+  ACHIEVEMENT_STREAK_WEEK,
+  ACHIEVEMENT_STREAK_MONTH,
+  ACHIEVEMENT_WORKOUTS_BEGINNER,
+  ACHIEVEMENT_WORKOUTS_INTERMEDIATE,
+  ACHIEVEMENT_WORKOUTS_ADVANCED,
+  ACHIEVEMENT_VOLUME_HEAVY,
+  ACHIEVEMENT_VOLUME_BEAST,
+} from "./utils/constants";
 
 /**
  * Update streak after completing a workout
@@ -21,7 +31,7 @@ export const updateStreak = mutation({
 
     if (!streakData) {
       // First workout ever!
-      streakData = await ctx.db.insert("streakData", {
+      const streakId = await ctx.db.insert("streakData", {
         userId: args.userId,
         currentStreak: 1,
         longestStreak: 1,
@@ -46,8 +56,8 @@ export const updateStreak = mutation({
       return { currentStreak: 1, achievementsUnlocked: ["first_workout"] };
     }
 
-    // Get existing streak data
-    const streakDoc = await ctx.db.get(streakData);
+    // Get existing streak data (streakData is already the full document)
+    const streakDoc = streakData;
     if (!streakDoc) return { currentStreak: 0, achievementsUnlocked: [] };
 
     const lastWorkout = new Date(streakDoc.lastWorkoutDate);
@@ -71,75 +81,91 @@ export const updateStreak = mutation({
       newStreak = 1;
     }
 
-    // Update streak data
-    await ctx.db.patch(streakDoc._id, {
-      currentStreak: newStreak,
-      longestStreak: Math.max(newStreak, streakDoc.longestStreak),
-      lastWorkoutDate: today,
-      totalWorkouts: streakDoc.totalWorkouts + 1
+    // TRANSACTION SAFETY: Wrap streak update + achievements in transaction
+    const result = await executeWithRollback(ctx.db, async (tracker) => {
+      // Update streak data
+      await ctx.db.patch(streakDoc._id, {
+        currentStreak: newStreak,
+        longestStreak: Math.max(newStreak, streakDoc.longestStreak),
+        lastWorkoutDate: today,
+        totalWorkouts: streakDoc.totalWorkouts + 1
+      });
+      tracker.trackUpdate("streakData", streakDoc._id, {
+        currentStreak: streakDoc.currentStreak,
+        longestStreak: streakDoc.longestStreak,
+        lastWorkoutDate: streakDoc.lastWorkoutDate,
+        totalWorkouts: streakDoc.totalWorkouts
+      });
+
+      // Check for streak achievements
+      if (newStreak === ACHIEVEMENT_STREAK_WEEK) {
+        const existing = await ctx.db
+          .query("achievements")
+          .withIndex("by_userId_type", (q) => q.eq("userId", args.userId).eq("type", "streak_7"))
+          .first();
+
+        if (!existing) {
+          const achievementId = await ctx.db.insert("achievements", {
+            userId: args.userId,
+            type: "streak_7",
+            unlockedAt: new Date().toISOString(),
+            displayName: "Week Warrior",
+            description: "7-day workout streak",
+            icon: "🔥",
+            tier: "silver"
+          });
+          tracker.trackInsert("achievements", achievementId);
+          achievementsUnlocked.push("streak_7");
+        }
+      }
+
+      if (newStreak === ACHIEVEMENT_STREAK_MONTH) {
+        const existing = await ctx.db
+          .query("achievements")
+          .withIndex("by_userId_type", (q) => q.eq("userId", args.userId).eq("type", "streak_30"))
+          .first();
+
+        if (!existing) {
+          const achievementId = await ctx.db.insert("achievements", {
+            userId: args.userId,
+            type: "streak_30",
+            unlockedAt: new Date().toISOString(),
+            displayName: "Month Master",
+            description: "30-day workout streak",
+            icon: "⚡",
+            tier: "gold"
+          });
+          tracker.trackInsert("achievements", achievementId);
+          achievementsUnlocked.push("streak_30");
+        }
+      }
+
+      // Check workout count achievements
+      const totalWorkouts = streakDoc.totalWorkouts + 1;
+
+      if (totalWorkouts === ACHIEVEMENT_WORKOUTS_BEGINNER) {
+        const achievementId = await unlockAchievement(ctx, args.userId, "workouts_10", "Getting Started", "Complete 10 workouts", "💪", "bronze");
+        if (achievementId) tracker.trackInsert("achievements", achievementId);
+        achievementsUnlocked.push("workouts_10");
+      }
+      if (totalWorkouts === ACHIEVEMENT_WORKOUTS_INTERMEDIATE) {
+        const achievementId = await unlockAchievement(ctx, args.userId, "workouts_50", "Committed", "Complete 50 workouts", "🏋️", "silver");
+        if (achievementId) tracker.trackInsert("achievements", achievementId);
+        achievementsUnlocked.push("workouts_50");
+      }
+      if (totalWorkouts === ACHIEVEMENT_WORKOUTS_ADVANCED) {
+        const achievementId = await unlockAchievement(ctx, args.userId, "workouts_100", "Century Club", "Complete 100 workouts", "🎖️", "gold");
+        if (achievementId) tracker.trackInsert("achievements", achievementId);
+        achievementsUnlocked.push("workouts_100");
+      }
+
+      return {
+        currentStreak: newStreak,
+        achievementsUnlocked
+      };
     });
 
-    // Check for streak achievements
-    if (newStreak === 7) {
-      const existing = await ctx.db
-        .query("achievements")
-        .withIndex("by_userId_type", (q) => q.eq("userId", args.userId).eq("type", "streak_7"))
-        .first();
-
-      if (!existing) {
-        await ctx.db.insert("achievements", {
-          userId: args.userId,
-          type: "streak_7",
-          unlockedAt: new Date().toISOString(),
-          displayName: "Week Warrior",
-          description: "7-day workout streak",
-          icon: "🔥",
-          tier: "silver"
-        });
-        achievementsUnlocked.push("streak_7");
-      }
-    }
-
-    if (newStreak === 30) {
-      const existing = await ctx.db
-        .query("achievements")
-        .withIndex("by_userId_type", (q) => q.eq("userId", args.userId).eq("type", "streak_30"))
-        .first();
-
-      if (!existing) {
-        await ctx.db.insert("achievements", {
-          userId: args.userId,
-          type: "streak_30",
-          unlockedAt: new Date().toISOString(),
-          displayName: "Month Master",
-          description: "30-day workout streak",
-          icon: "⚡",
-          tier: "gold"
-        });
-        achievementsUnlocked.push("streak_30");
-      }
-    }
-
-    // Check workout count achievements
-    const totalWorkouts = streakDoc.totalWorkouts + 1;
-
-    if (totalWorkouts === 10) {
-      await unlockAchievement(ctx, args.userId, "workouts_10", "Getting Started", "Complete 10 workouts", "💪", "bronze");
-      achievementsUnlocked.push("workouts_10");
-    }
-    if (totalWorkouts === 50) {
-      await unlockAchievement(ctx, args.userId, "workouts_50", "Committed", "Complete 50 workouts", "🏋️", "silver");
-      achievementsUnlocked.push("workouts_50");
-    }
-    if (totalWorkouts === 100) {
-      await unlockAchievement(ctx, args.userId, "workouts_100", "Century Club", "Complete 100 workouts", "🎖️", "gold");
-      achievementsUnlocked.push("workouts_100");
-    }
-
-    return {
-      currentStreak: newStreak,
-      achievementsUnlocked
-    };
+    return result;
   },
 });
 
@@ -159,7 +185,7 @@ async function unlockAchievement(
     .first();
 
   if (!existing) {
-    await ctx.db.insert("achievements", {
+    const achievementId = await ctx.db.insert("achievements", {
       userId,
       type,
       unlockedAt: new Date().toISOString(),
@@ -168,7 +194,9 @@ async function unlockAchievement(
       icon,
       tier
     });
+    return achievementId;
   }
+  return null;
 }
 
 /**
@@ -182,7 +210,7 @@ export const checkVolumeAchievements = mutation({
   handler: async (ctx, args) => {
     const achievementsUnlocked: string[] = [];
 
-    if (args.totalVolume >= 10000) {
+    if (args.totalVolume >= ACHIEVEMENT_VOLUME_HEAVY) {
       const existing = await ctx.db
         .query("achievements")
         .withIndex("by_userId_type", (q) => q.eq("userId", args.userId).eq("type", "volume_10000"))
@@ -202,7 +230,7 @@ export const checkVolumeAchievements = mutation({
       }
     }
 
-    if (args.totalVolume >= 50000) {
+    if (args.totalVolume >= ACHIEVEMENT_VOLUME_BEAST) {
       await unlockAchievement(ctx, args.userId, "volume_50000", "Beast Mode", "Lift 50,000kg total", "💎", "platinum");
       achievementsUnlocked.push("volume_50000");
     }

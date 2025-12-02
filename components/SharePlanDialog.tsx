@@ -8,6 +8,7 @@ import { XMarkIcon, CheckCircleIcon } from './icons';
 import { Share2 as ShareIcon } from 'lucide-react';
 import { notify } from './layout/Toast';
 import { cn } from '../lib/utils';
+import { analytics, EventTypes } from '../services/analyticsService';
 
 interface SharePlanDialogProps {
   planId: Id<"workoutPlans">;
@@ -32,6 +33,14 @@ export default function SharePlanDialog({ planId, planName, userId, isOpen, onCl
         userId
       });
       setShareCode(result.shareCode);
+
+      // Track plan shared
+      analytics.track(EventTypes.PLAN_SHARED, {
+        planName,
+        shareCode: result.shareCode,
+        expiresIn_days: 7,
+      });
+
       notify({ type: 'success', message: 'Share code generated!' });
     } catch (error) {
       notify({ type: 'error', message: 'Failed to generate share code' });
@@ -68,46 +77,93 @@ export default function SharePlanDialog({ planId, planName, userId, isOpen, onCl
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
-      <Card className="w-full max-w-md shadow-elevated animate-scale-in">
-        <CardHeader className="border-b border-[var(--border)] p-5">
+    <div className={cn(
+      'fixed inset-0',
+      'z-[var(--z-modal)]',
+      'flex items-center justify-center',
+      'p-[var(--space-4)]',
+      'bg-black/60 backdrop-blur-md',
+      'animate-fade-in'
+    )}>
+      <Card className="w-full max-w-md shadow-[var(--shadow-lg)] animate-scale-in">
+        <CardHeader className={cn(
+          'border-b border-[var(--border-default)]',
+          'p-[var(--space-5)]'
+        )}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center">
-                <ShareIcon className="w-5 h-5 text-white" />
+            <div className="flex items-center gap-[var(--space-3)]">
+              <div className={cn(
+                'w-10 h-10',
+                'rounded-full',
+                'bg-gradient-to-br from-[var(--brand-primary)] to-[var(--brand-primary-hover)]',
+                'flex items-center justify-center'
+              )}>
+                <ShareIcon className="w-5 h-5 text-[var(--text-on-brand)]" />
               </div>
               <div>
-                <h3 className="text-[17px] font-bold text-[var(--text-primary)]">
+                <h3 className={cn(
+                  'text-[var(--text-lg)]',
+                  'font-[var(--weight-bold)]',
+                  'text-[var(--text-primary)]'
+                )}>
                   Share Your Plan
                 </h3>
-                <p className="text-[12px] text-[var(--text-secondary)]">
+                <p className={cn(
+                  'text-[var(--text-xs)]',
+                  'text-[var(--text-secondary)]'
+                )}>
                   Train together with a buddy
                 </p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-full hover:bg-[var(--surface-secondary)] transition-all"
+              className={cn(
+                'p-[var(--space-2)]',
+                'rounded-full',
+                'hover:bg-[var(--surface-secondary)]',
+                'transition-all duration-[var(--duration-fast)]'
+              )}
             >
               <XMarkIcon className="w-5 h-5 text-[var(--text-secondary)]" />
             </button>
           </div>
         </CardHeader>
 
-        <CardContent className="p-5">
+        <CardContent className="p-[var(--space-5)]">
           {/* Plan Info */}
-          <div className="mb-6 p-4 bg-[var(--surface-secondary)] rounded-xl">
-            <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1">
+          <div className={cn(
+            'mb-[var(--space-6)]',
+            'p-[var(--space-4)]',
+            'bg-[var(--surface-secondary)]',
+            'rounded-[var(--radius-xl)]'
+          )}>
+            <p className={cn(
+              'text-[var(--text-2xs)]',
+              'uppercase tracking-[var(--tracking-wider)]',
+              'text-[var(--text-tertiary)]',
+              'font-[var(--weight-bold)]',
+              'mb-[var(--space-1)]'
+            )}>
               Plan to Share
             </p>
-            <p className="text-[16px] font-bold text-[var(--text-primary)]">
+            <p className={cn(
+              'text-[var(--text-md)]',
+              'font-[var(--weight-bold)]',
+              'text-[var(--text-primary)]'
+            )}>
               {planName}
             </p>
           </div>
 
           {!shareCode ? (
             <>
-              <p className="text-[14px] text-[var(--text-secondary)] mb-6 leading-relaxed">
+              <p className={cn(
+                'text-[var(--text-sm)]',
+                'text-[var(--text-secondary)]',
+                'mb-[var(--space-6)]',
+                'leading-relaxed'
+              )}>
                 Generate a share code to let your workout buddy follow the same plan.
                 They'll get an exact copy and you can compare progress!
               </p>
@@ -124,27 +180,62 @@ export default function SharePlanDialog({ planId, planName, userId, isOpen, onCl
             </>
           ) : (
             <>
-              <div className="mb-6">
-                <p className="text-[12px] text-[var(--text-secondary)] mb-3">
+              <div className="mb-[var(--space-6)]">
+                <p className={cn(
+                  'text-[var(--text-xs)]',
+                  'text-[var(--text-secondary)]',
+                  'mb-[var(--space-3)]'
+                )}>
                   Share this code with your workout buddy:
                 </p>
 
                 {/* Share Code Display */}
                 <div className="relative">
-                  <div className="p-6 bg-gradient-to-br from-[var(--primary-light)] to-[var(--accent-light)] border-2 border-[var(--primary)]/30 rounded-2xl text-center">
-                    <p className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-bold mb-2">
+                  <div className={cn(
+                    'p-[var(--space-6)]',
+                    'bg-gradient-to-br from-[var(--brand-primary-subtle)] to-[var(--surface-secondary)]',
+                    'border-2 border-[var(--brand-primary)]/30',
+                    'rounded-[var(--radius-2xl)]',
+                    'text-center'
+                  )}>
+                    <p className={cn(
+                      'text-[var(--text-2xs)]',
+                      'uppercase tracking-[var(--tracking-widest)]',
+                      'text-[var(--text-tertiary)]',
+                      'font-[var(--weight-bold)]',
+                      'mb-[var(--space-2)]'
+                    )}>
                       Share Code
                     </p>
-                    <p className="text-3xl font-black text-[var(--primary)] font-mono tracking-wider">
+                    <p className={cn(
+                      'text-3xl',
+                      'font-[var(--weight-black)]',
+                      'text-[var(--brand-primary)]',
+                      'font-mono tracking-wider'
+                    )}>
                       {shareCode}
                     </p>
-                    <p className="text-[11px] text-[var(--text-secondary)] mt-2">
+                    <p className={cn(
+                      'text-[var(--text-2xs)]',
+                      'text-[var(--text-secondary)]',
+                      'mt-[var(--space-2)]'
+                    )}>
                       Expires in 7 days
                     </p>
                   </div>
 
                   {copied && (
-                    <div className="absolute -top-2 -right-2 px-3 py-1 bg-[var(--success)] text-white text-[11px] font-bold rounded-full shadow-lg animate-scale-in">
+                    <div className={cn(
+                      'absolute -top-2 -right-2',
+                      'px-[var(--space-3)] py-[var(--space-1)]',
+                      'bg-[var(--status-success-bg)]',
+                      'text-[var(--text-on-brand)]',
+                      'text-[var(--text-2xs)]',
+                      'font-[var(--weight-bold)]',
+                      'rounded-full',
+                      'shadow-[var(--shadow-lg)]',
+                      'animate-scale-in'
+                    )}>
                       ✓ Copied!
                     </div>
                   )}
@@ -152,7 +243,7 @@ export default function SharePlanDialog({ planId, planName, userId, isOpen, onCl
               </div>
 
               {/* Action Buttons */}
-              <div className="space-y-2">
+              <div className="space-y-[var(--space-2)]">
                 <Button
                   onClick={handleShare}
                   variant="accent"
@@ -172,10 +263,19 @@ export default function SharePlanDialog({ planId, planName, userId, isOpen, onCl
               </div>
 
               {/* Info */}
-              <div className="mt-4 p-3 bg-[var(--accent-light)] border border-[var(--accent)]/20 rounded-xl">
-                <p className="text-[12px] text-[var(--text-primary)] leading-relaxed">
-                  💡 Your buddy will get an exact copy of this plan.
-                  You'll both be able to compare PRs and see each other's progress!
+              <div className={cn(
+                'mt-[var(--space-4)]',
+                'p-[var(--space-3)]',
+                'bg-[var(--surface-secondary)]',
+                'rounded-[var(--radius-xl)]'
+              )}>
+                <p className={cn(
+                  'text-[var(--text-xs)]',
+                  'text-[var(--text-secondary)]',
+                  'leading-relaxed'
+                )}>
+                  Your buddy will get an exact copy of this plan.
+                  You'll both be able to compare PRs and see each other's progress.
                 </p>
               </div>
             </>

@@ -9,7 +9,23 @@ export function calculateWorkoutIntensity(day: PlanDay): {
   color: string;
   gradient: string;
 } {
-  const exercises = day.blocks?.flatMap(b => Array.isArray(b.exercises) ? b.exercises : []) || [];
+  // Get exercises from blocks (single session) or sessions (2x daily)
+  let exercises: PlanExercise[] = [];
+
+  // Single session: day.blocks
+  if (day.blocks && Array.isArray(day.blocks)) {
+    exercises = day.blocks.flatMap(b => Array.isArray(b.exercises) ? b.exercises : []);
+  }
+
+  // 2x daily: day.sessions[].blocks[].exercises
+  const sessions = (day as any).sessions;
+  if ((!exercises.length) && sessions && Array.isArray(sessions)) {
+    exercises = sessions.flatMap((s: any) =>
+      (s.blocks || []).flatMap((b: any) =>
+        Array.isArray(b.exercises) ? b.exercises : []
+      )
+    );
+  }
 
   if (exercises.length === 0) {
     return {
@@ -20,9 +36,14 @@ export function calculateWorkoutIntensity(day: PlanDay): {
     };
   }
 
-  // Calculate average RPE
+  // Calculate average RPE (handles string or number)
   const validRPEs = exercises
-    .map(ex => ex.rpe ? parseInt(ex.rpe) : 5)
+    .map(ex => {
+      if (ex.rpe === null || ex.rpe === undefined) return 5;
+      if (typeof ex.rpe === 'number') return ex.rpe;
+      const parsed = parseInt(String(ex.rpe), 10);
+      return isNaN(parsed) ? 5 : parsed;
+    })
     .filter(rpe => !isNaN(rpe) && rpe > 0);
 
   const avgRPE = validRPEs.length > 0
@@ -65,7 +86,7 @@ export function calculateWorkoutIntensity(day: PlanDay): {
  * Get workout type based on focus and exercises
  */
 export function getWorkoutType(day: PlanDay): 'strength' | 'cardio' | 'mobility' | 'mixed' {
-  const focus = day.focus.toLowerCase();
+  const focus = (day.focus || (day as any).session_name || '').toLowerCase();
 
   if (focus.includes('cardio') || focus.includes('run') || focus.includes('endurance')) {
     return 'cardio';

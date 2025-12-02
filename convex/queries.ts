@@ -1,5 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { verifyAdmin } from "./utils/accessControl";
 
 // Get user profile
 export const getUserProfile = query({
@@ -16,21 +17,28 @@ export const getUserProfile = query({
   },
 });
 
-// Get all workout plans for the current user
+// Get all workout plans for the current user (paginated)
 export const getWorkoutPlans = query({
   args: {
     userId: v.string(),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const plans = await ctx.db
+    const limit = args.limit ?? 20; // Default to 20 plans per page
+
+    const result = await ctx.db
       .query("workoutPlans")
       .withIndex("by_userId_createdAt", (q) =>
         q.eq("userId", args.userId)
       )
       .order("desc")
-      .collect();
+      .paginate({
+        numItems: limit,
+        cursor: args.cursor || null,
+      });
 
-    return plans;
+    return result;
   },
 });
 
@@ -54,19 +62,37 @@ export const getActivePlan = query({
   },
 });
 
-// Get workout logs for the current user
+// Get a single workout plan by ID
+export const getWorkoutPlan = query({
+  args: {
+    planId: v.id("workoutPlans"),
+  },
+  handler: async (ctx, args) => {
+    const plan = await ctx.db.get(args.planId);
+    return plan || null;
+  },
+});
+
+// Get workout logs for the current user (paginated)
 export const getWorkoutLogs = query({
   args: {
     userId: v.string(),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const logs = await ctx.db
+    const limit = args.limit ?? 20; // Default to 20 logs per page
+
+    const result = await ctx.db
       .query("workoutLogs")
       .withIndex("by_userId_date", (q) => q.eq("userId", args.userId))
       .order("desc")
-      .collect();
+      .paginate({
+        numItems: limit,
+        cursor: args.cursor || null,
+      });
 
-    return logs;
+    return result;
   },
 });
 
@@ -114,53 +140,55 @@ export const getAllExercises = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db.query("exerciseCache");
-    
-    // For pagination, use paginateQuery
-    // Use exercise_name for consistent ordering (more reliable than default ordering)
+    // PERFORMANCE: Use index for category filtering when provided
     const limit = args.limit || 100;
-    const result = await query.order("asc").paginate({ 
-      cursor: args.cursor || null,
-      numItems: limit 
-    });
-    
-    let exercises = result.page;
-    
-    // Filter by category if provided
+
+    let result;
     if (args.category) {
-      exercises = exercises.filter(ex => ex.primary_category === args.category);
+      // Use index for category filtering
+      result = await ctx.db
+        .query("exerciseCache")
+        .withIndex("by_category", (q) => q.eq("primary_category", args.category))
+        .order("asc")
+        .paginate({
+          cursor: args.cursor || null,
+          numItems: limit
+        });
+    } else {
+      // No category filter, use default ordering
+      result = await ctx.db
+        .query("exerciseCache")
+        .order("asc")
+        .paginate({
+          cursor: args.cursor || null,
+          numItems: limit
+        });
     }
-    
-    // Filter by search term if provided
+
+    let exercises = result.page;
+
+    // NOTE: Search term filtering still happens after pagination due to Convex limitations
+    // Full-text search would require a separate index or external search service
     if (args.searchTerm) {
       const searchLower = args.searchTerm.toLowerCase();
-      exercises = exercises.filter(ex => 
+      exercises = exercises.filter(ex =>
         ex.exercise_name.toLowerCase().includes(searchLower) ||
         ex.explanation?.toLowerCase().includes(searchLower) ||
         ex.muscles_worked?.some(m => m.toLowerCase().includes(searchLower))
       );
     }
-    
+
     // Sort by hit_count (most popular first) or alphabetically
-    // NOTE: This sorting happens AFTER pagination, so it doesn't affect cursor position
     exercises.sort((a, b) => {
       if (a.hit_count !== b.hit_count) {
         return (b.hit_count || 0) - (a.hit_count || 0);
       }
       return a.exercise_name.localeCompare(b.exercise_name);
     });
-    
-    // Only return continueCursor if:
-    // 1. The original pagination has more items (result.continueCursor exists)
-    // 2. We got results from the original page (not filtered out)
-    // This prevents infinite loops when all results are filtered out
-    // BUT: Since sorting happens AFTER pagination, we need to be careful
-    // The cursor is based on the original order, not the sorted order
-    const shouldContinue = result.continueCursor !== null && result.page.length > 0;
-    
+
     return {
       exercises,
-      continueCursor: shouldContinue ? result.continueCursor : null,
+      continueCursor: result.continueCursor,
     };
   },
 });
@@ -287,7 +315,7 @@ export const getSexSpecificGuidelines = query({
     experience: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
-    const sex = args.sex || "neutral";
+    const sex = (args.sex || "neutral") as "male" | "female" | "other" | "neutral";
     const bySex = await ctx.db
       .query("sexSpecificGuidelines")
       .withIndex("by_sex_goal_exp", q => q.eq("sex", sex))
@@ -362,12 +390,15 @@ export const getBodyContextGuidelines = query({
   },
 });
 
-// ---------- Analytics: distributions ----------
+// ---------- Analytics: distributions (Admin Only) ----------
 
 // Goals distribution from user trainingPreferences
 export const getGoalsDistribution = query({
   args: {},
   handler: async (ctx) => {
+    // SECURITY: Require admin authentication
+    await verifyAdmin(ctx);
+
     const users = await ctx.db.query("users").collect();
     const counts: Record<string, number> = {};
     users.forEach(u => {
@@ -382,6 +413,9 @@ export const getGoalsDistribution = query({
 export const getSportsDistribution = query({
   args: {},
   handler: async (ctx) => {
+    // SECURITY: Require admin authentication
+    await verifyAdmin(ctx);
+
     const users = await ctx.db.query("users").collect();
     const counts: Record<string, number> = {};
     users.forEach(u => {
@@ -396,6 +430,9 @@ export const getSportsDistribution = query({
 export const getPainPointsFrequency = query({
   args: {},
   handler: async (ctx) => {
+    // SECURITY: Require admin authentication
+    await verifyAdmin(ctx);
+
     const users = await ctx.db.query("users").collect();
     const counts: Record<string, number> = {};
     users.forEach(u => {
@@ -615,14 +652,17 @@ export const getCachedCompressedKnowledge = query({
 export const getGoalDistribution = query({
   args: {},
   handler: async (ctx) => {
+    // SECURITY: Require admin authentication
+    await verifyAdmin(ctx);
+
     const users = await ctx.db.query("users").collect();
     const goals: Record<string, number> = {};
-    
+
     users.forEach(user => {
       const goal = user.trainingPreferences?.primary_goal || 'unspecified';
       goals[goal] = (goals[goal] || 0) + 1;
     });
-    
+
     return goals;
   },
 });
@@ -631,14 +671,17 @@ export const getGoalDistribution = query({
 export const getSportDistribution = query({
   args: {},
   handler: async (ctx) => {
+    // SECURITY: Require admin authentication
+    await verifyAdmin(ctx);
+
     const users = await ctx.db.query("users").collect();
     const sports: Record<string, number> = {};
-    
+
     users.forEach(user => {
       const sport = user.trainingPreferences?.sport || 'none';
       sports[sport] = (sports[sport] || 0) + 1;
     });
-    
+
     return sports;
   },
 });
@@ -647,14 +690,17 @@ export const getSportDistribution = query({
 export const getExperienceDistribution = query({
   args: {},
   handler: async (ctx) => {
+    // SECURITY: Require admin authentication
+    await verifyAdmin(ctx);
+
     const users = await ctx.db.query("users").collect();
     const experience: Record<string, number> = {};
-    
+
     users.forEach(user => {
       const exp = user.trainingPreferences?.experience_level || 'unspecified';
       experience[exp] = (experience[exp] || 0) + 1;
     });
-    
+
     return experience;
   },
 });
@@ -663,16 +709,19 @@ export const getExperienceDistribution = query({
 export const getPainPointsDistribution = query({
   args: {},
   handler: async (ctx) => {
+    // SECURITY: Require admin authentication
+    await verifyAdmin(ctx);
+
     const users = await ctx.db.query("users").collect();
     const painPoints: Record<string, number> = {};
-    
+
     users.forEach(user => {
       const points = user.trainingPreferences?.pain_points || [];
       points.forEach(point => {
         painPoints[point] = (painPoints[point] || 0) + 1;
       });
     });
-    
+
     return painPoints;
   },
 });
@@ -683,6 +732,9 @@ export const getGenerationStats = query({
     since: v.optional(v.string()), // ISO date string
   },
   handler: async (ctx, args) => {
+    // SECURITY: Require admin authentication
+    await verifyAdmin(ctx);
+
     let logs = await ctx.db.query("generationLog").collect();
     
     if (args.since) {
@@ -716,5 +768,69 @@ export const getGenerationStats = query({
         ? logs.reduce((sum, log) => sum + log.attempt_count, 0) / logs.length
         : 0
     };
+  },
+});
+
+// Get cached exercise explanation (full object)
+export const getExerciseFromCache = query({
+  args: {
+    exerciseName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Normalize exercise name for lookup
+    const normalizedName = args.exerciseName.toLowerCase().replace(/\s+/g, '_');
+
+    const cached = await ctx.db
+      .query("exerciseCache")
+      .withIndex("by_exerciseName", (q) => q.eq("exercise_name", normalizedName))
+      .first();
+
+    if (!cached) {
+      // Try without normalization as fallback
+      const cachedDirect = await ctx.db
+        .query("exerciseCache")
+        .withIndex("by_exerciseName", (q) => q.eq("exercise_name", args.exerciseName))
+        .first();
+      return cachedDirect || null;
+    }
+
+    return cached;
+  },
+});
+
+// Get cached exercise explanation (just the text)
+export const getExerciseExplanation = query({
+  args: {
+    exercise_name: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Check if exercise explanation exists in cache
+    const cached = await ctx.db
+      .query("exerciseCache")
+      .withIndex("by_exerciseName", (q) => q.eq("exercise_name", args.exercise_name))
+      .first();
+
+    return cached?.explanation || null;
+  },
+});
+
+// Get exercises that don't have step_by_step populated
+export const getExercisesWithoutSteps = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 10;
+
+    // Get all exercises and filter for those without step_by_step
+    const exercises = await ctx.db
+      .query("exerciseCache")
+      .take(1000);
+
+    const withoutSteps = exercises.filter(
+      e => !e.step_by_step || e.step_by_step.length === 0
+    );
+
+    return withoutSteps.slice(0, limit);
   },
 });

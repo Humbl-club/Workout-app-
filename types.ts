@@ -10,6 +10,7 @@ export interface BaseMetricTemplate {
   resistance?: string | null;
   pulse_target?: string | null;
   has_drop_set?: boolean; // For special instructions
+  target_tempo?: string; // For tempo-based exercises
 }
 
 export interface SetsRepsWeightTemplate extends BaseMetricTemplate {
@@ -23,23 +24,29 @@ export interface SetsRepsWeightTempoTemplate extends BaseMetricTemplate {
 
 export interface SetsDurationTemplate extends BaseMetricTemplate {
   type: 'sets_duration';
-  target_duration_s: number | null;
+  target_duration_s?: number | null;
+  duration_seconds?: number | null; // Alternative field name from AI
 }
 
 export interface SetsDistanceRestTemplate extends BaseMetricTemplate {
   type: 'sets_distance_rest';
-  target_distance_m: number;
-  target_rest_s: number;
+  target_distance_m?: number;
+  target_rest_s?: number;
 }
 
 export interface DistanceTimeTemplate extends BaseMetricTemplate {
   type: 'distance_time';
-  target_distance_km: number;
+  target_distance_km?: number;
+  target_distance_m?: number; // Alternative: meters
+  distance_km?: number; // Alternative field name from AI
+  distance_m?: number; // Alternative field name from AI
 }
 
 export interface DurationOnlyTemplate extends BaseMetricTemplate {
   type: 'duration_only';
-  target_duration_minutes: number;
+  target_duration_minutes?: number;
+  duration_minutes?: number; // Alternative field name from AI
+  target_duration_s?: number; // Alternative: seconds
 }
 
 export type MetricTemplate = 
@@ -61,8 +68,9 @@ export interface PlanExercise {
 
 // NEW BLOCK-BASED ARCHITECTURE
 export interface BaseBlock {
-  type: 'single' | 'superset' | 'amrap';
+  type: 'single' | 'superset' | 'amrap' | 'circuit';
   title?: string;
+  notes?: string;
   exercises: PlanExercise[];
 }
 
@@ -80,14 +88,43 @@ export interface AmrapBlock extends BaseBlock {
   duration_minutes: number;
 }
 
-export type WorkoutBlock = SingleExerciseBlock | SupersetBlock | AmrapBlock;
+export interface CircuitBlock extends BaseBlock {
+  type: 'circuit';
+  rounds?: number;
+  duration_minutes?: number;
+}
 
+export type WorkoutBlock = SingleExerciseBlock | SupersetBlock | AmrapBlock | CircuitBlock;
+
+// NEW: Session for 2x/day training
+export interface WorkoutSession {
+  session_name: string; // e.g., "AM Cardio", "PM Strength"
+  time_of_day: 'morning' | 'evening' | 'all-day';
+  estimated_duration?: number; // minutes
+  blocks: WorkoutBlock[];
+}
 
 export interface PlanDay {
   day_of_week: number; // 1=Mon, 7=Sun
   focus: string;
   notes?: string;
-  blocks: WorkoutBlock[];
+  // Standard single-session structure
+  blocks?: WorkoutBlock[];
+  // NEW: 2x/day session structure (use sessions OR blocks, not both)
+  sessions?: WorkoutSession[];
+}
+
+// NEW: Periodization phases
+export type PeriodizationPhase = 'base' | 'build' | 'peak' | 'taper' | 'recovery';
+
+// NEW: Periodization metadata for goal-based training
+export interface Periodization {
+  total_weeks: number;
+  current_week: number;
+  phase: PeriodizationPhase;
+  phase_description?: string;
+  weeks_in_phase?: number;
+  phase_end_week?: number;
 }
 
 export interface DailyRoutine {
@@ -98,61 +135,14 @@ export interface DailyRoutine {
 
 export interface WorkoutPlan {
     id?: string;
+    _id?: string; // Convex document ID
     name: string;
     weeklyPlan: PlanDay[];
     dailyRoutine?: DailyRoutine;
     createdAt?: string; // ISO date string
-    
-    // NEW: Auxiliary routines for comprehensive training
-    auxiliaryRoutines?: {
-        mobility?: AuxiliaryRoutine[];
-        stretching?: AuxiliaryRoutine[];
-        activation?: AuxiliaryRoutine[];
-        recovery?: AuxiliaryRoutine[];
-        sportDrills?: AuxiliaryRoutine[];
-    };
-    
-    // NEW: Daily habits separate from main workouts
-    dailyRoutines?: {
-        morning?: DailyHabit[];
-        preWorkout?: DailyHabit[];
-        postWorkout?: DailyHabit[];
-        evening?: DailyHabit[];
-    };
-}
 
-// NEW: Auxiliary routine types
-export interface AuxiliaryRoutine {
-    id: string;
-    name: string;
-    frequency: "daily" | "3x_week" | "pre_workout" | "post_workout" | "as_needed";
-    duration_minutes: number;
-    exercises: AuxiliaryExercise[];
-    notes?: string;
-    sport_specific?: string;
-}
-
-export interface AuxiliaryExercise {
-    exercise_name: string;
-    category: "mobility" | "stretching" | "activation" | "recovery" | "drill";
-    metrics_template: MetricsTemplate;
-    notes?: string;
-}
-
-export interface DailyHabit {
-    name: string;
-    time_of_day: "morning" | "afternoon" | "evening" | "pre_workout" | "post_workout";
-    exercises: SimpleExercise[];
-    duration_minutes: number;
-    mandatory: boolean;
-    reminder_time?: string; // e.g., "07:00" for 7 AM
-}
-
-export interface SimpleExercise {
-    exercise_name: string;
-    duration_s?: number;
-    reps?: string;
-    notes?: string;
+    // NEW: Periodization for goal-based training
+    periodization?: Periodization;
 }
 
 // Logged Data Types
@@ -199,6 +189,38 @@ export interface ChatMessage {
     functionCall?: any;
 }
 
+// Cardio Preferences (for training types that include cardio)
+export interface CardioPreferences {
+    preferred_types: string[]; // ["running", "cycling", "rowing", "swimming", "elliptical", "stair_climber"]
+    favorite_exercise?: string; // Primary cardio choice
+    cardio_duration_minutes?: number; // Default cardio session length
+    outdoor_preferred?: boolean; // Prefers outdoor activities
+}
+
+// Training Split (1x or 2x daily)
+export interface TrainingSplit {
+    sessions_per_day: '1' | '2';
+    training_type: 'strength_only' | 'strength_plus_cardio' | 'combined' | 'cardio_focused';
+    cardio_preferences?: CardioPreferences;
+}
+
+// Specific Goal with target date (e.g., Hyrox April 2025)
+export interface SpecificGoal {
+    event_type?: string | null; // "hyrox", "marathon", "powerlifting_meet"
+    event_name?: string | null; // "Hyrox Hamburg"
+    target_date?: string | null; // ISO date
+    current_readiness?: number | null; // 1-10 scale
+    description?: string | null; // Free-form goal description
+}
+
+// Supplement tracking
+export interface Supplement {
+    name: string;
+    timing: 'morning' | 'pre_workout' | 'post_workout' | 'evening' | 'with_meals';
+    dosage?: string | null;
+    active: boolean;
+}
+
 // Training Preferences (from onboarding)
 export interface TrainingPreferences {
     primary_goal: string; // "Aesthetic Physique", "Strength & Power", etc.
@@ -210,14 +232,18 @@ export interface TrainingPreferences {
     sport_specific?: string | null; // Elite sport-specific protocols
     additional_notes?: string | null; // Free-form notes
     last_updated: string; // ISO date string
-    // New richer profile fields
+    // Profile fields
     sex?: 'male' | 'female' | 'other';
     equipment?: 'minimal' | 'home_gym' | 'commercial_gym';
     preferred_session_length?: '30' | '45' | '60' | '75';
     athletic_level?: 'low' | 'moderate' | 'high';
-    training_age_years?: number; // years of consistent training
+    training_age_years?: number;
     body_type?: 'lean' | 'average' | 'muscular';
-    comfort_flags?: string[]; // user-requested avoids/preferences (e.g., "avoid_high_impact", "avoid_chest_dominant", "prefer_neutral_grip")
+    comfort_flags?: string[];
+    // NEW: Training split for 1x/2x daily
+    training_split?: TrainingSplit;
+    // NEW: Specific goal with target date
+    specific_goal?: SpecificGoal;
 }
 
 // User Profile types

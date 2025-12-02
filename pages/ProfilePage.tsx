@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { WorkoutLog, UserProfile, BodyMetrics } from '../types';
-import { UserIcon, SignOutIcon, ScaleIcon, BookCheckIcon, CogIcon, UsersIcon, TrophyIcon } from '../components/icons';
+import { UserIcon, SignOutIcon, ScaleIcon, BookCheckIcon, CogIcon, UsersIcon, TrophyIcon, SunIcon, MoonIcon } from '../components/icons';
 import { useClerk, useUser } from '@clerk/clerk-react';
 import { notify } from '../components/layout/Toast';
 import InjuryProfile from '../components/InjuryProfile';
@@ -14,12 +14,28 @@ import PhotoTimeline from '../components/PhotoTimeline';
 import { useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Card, CardHeader, CardContent } from '../components/ui/card';
+import { cn } from '../lib/utils';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '../components/ui/PullToRefreshIndicator';
+import { ProgressChart } from '../components/ui/ProgressChart';
+import { VolumeChart } from '../components/ui/VolumeChart';
+import { PRHistoryChart } from '../components/ui/PRHistoryChart';
+import { getAllPRs } from '../services/prService';
+
+/* ═══════════════════════════════════════════════════════════════
+   PROFILE PAGE - Phase 9.4 Page Redesign
+
+   User profile, stats, achievements, and settings.
+   Uses design tokens for consistent styling.
+   ═══════════════════════════════════════════════════════════════ */
 
 interface ProfilePageProps {
   logs: WorkoutLog[];
   userProfile: UserProfile | null;
   onUpdateProfile: (data: Partial<UserProfile>) => void;
   onCreateNewPlan?: () => void;
+  theme?: 'light' | 'dark';
+  onToggleTheme?: () => void;
 }
 
 const MetricCard: React.FC<{
@@ -30,20 +46,39 @@ const MetricCard: React.FC<{
 }> = ({ label, value, unit, onEdit }) => (
   <button
     onClick={onEdit}
-    className="bg-[var(--surface)] border border-[var(--border)] rounded-lg p-3 text-left hover:border-[var(--accent)] transition-all w-full"
-    style={{ boxShadow: 'var(--shadow-sm)' }}
+    className={cn(
+      'bg-[var(--surface-primary)]',
+      'border border-[var(--border-default)]',
+      'rounded-[var(--radius-lg)]',
+      'p-[var(--space-3)]',
+      'text-left',
+      'hover:border-[var(--brand-primary)]',
+      'transition-all duration-[var(--duration-fast)]',
+      'w-full',
+      'shadow-[var(--shadow-sm)]'
+    )}
   >
-    <p className="text-[9px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-0.5">
+    <p
+      className={cn(
+        'text-[var(--text-2xs)]',
+        'uppercase tracking-[var(--tracking-wider)]',
+        'text-[var(--text-tertiary)]',
+        'font-[var(--weight-bold)]',
+        'mb-[var(--space-0-5)]'
+      )}
+    >
       {label}
     </p>
-    <p className="text-base font-bold text-[var(--text-primary)]">
+    <p className="text-[var(--text-base)] font-[var(--weight-bold)] text-[var(--text-primary)]">
       {value || '—'}
-      <span className="text-[12px] text-[var(--text-secondary)] ml-1">{unit}</span>
+      <span className="text-[var(--text-xs)] text-[var(--text-secondary)] ml-[var(--space-1)]">
+        {unit}
+      </span>
     </p>
   </button>
 );
 
-export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCreateNewPlan }: ProfilePageProps) {
+export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCreateNewPlan, theme, onToggleTheme }: ProfilePageProps) {
   const { t } = useTranslation();
   const [isEditingMetrics, setIsEditingMetrics] = useState(false);
   const [isPhotoCaptureOpen, setIsPhotoCaptureOpen] = useState(false);
@@ -52,6 +87,16 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
   const [showInjuryProfile, setShowInjuryProfile] = useState(false);
   const { signOut } = useClerk();
   const { user } = useUser();
+
+  // Pull-to-refresh
+  const handleRefresh = async () => {
+    // Convex queries auto-refresh, just add delay for UX
+    await new Promise(resolve => setTimeout(resolve, 800));
+  };
+
+  const { pullDistance, isRefreshing, isTriggered } = usePullToRefresh({
+    onRefresh: handleRefresh,
+  });
 
   // Get full user data with injury profile from Convex
   const userId = user?.id || null;
@@ -77,6 +122,7 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
       await signOut();
     } catch (error) {
       console.error('Error signing out:', error);
+      notify({ type: 'error', message: 'Failed to sign out. Please try again.' });
     }
   };
 
@@ -94,15 +140,74 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
 
   const bodyMetrics = userProfile?.bodyMetrics;
 
+  // Prepare chart data
+  const volumeData = useMemo(() => {
+    return logs.slice(-10).map(log => ({
+      date: log.date,
+      volume: log.exercises.reduce((total, ex) => {
+        return total + ex.sets.reduce((setTotal, set) => {
+          if ('weight' in set && 'reps' in set) {
+            const weight = typeof set.weight === 'string' ? parseFloat(set.weight) || 0 : set.weight;
+            const reps = typeof set.reps === 'string' ? parseFloat(set.reps) || 0 : set.reps;
+            return setTotal + (weight * reps);
+          }
+          return setTotal;
+        }, 0);
+      }, 0),
+      workoutName: log.focus
+    }));
+  }, [logs]);
+
+  const prHistory = useMemo(() => {
+    const prs = getAllPRs(logs);
+    return prs.map(pr => ({
+      date: pr.date || new Date().toISOString(),
+      exerciseName: pr.exercise_name,
+      weight: pr.weight,
+      reps: pr.reps
+    }));
+  }, [logs]);
+
   return (
-    <div className="w-full max-w-lg mx-auto px-4 pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))] animate-fade-in flex-1">
-      <header className="mb-4">
-        <div className="flex items-center justify-between mb-2">
+    <>
+      {/* Pull-to-refresh indicator */}
+      <PullToRefreshIndicator
+        distance={pullDistance}
+        isTriggered={isTriggered}
+        isRefreshing={isRefreshing}
+      />
+
+      <div
+        className={cn(
+          'w-full max-w-lg mx-auto',
+          'px-[var(--space-4)]',
+          'pt-[max(var(--space-4),env(safe-area-inset-top))]',
+          'pb-[calc(var(--height-tab-bar)+var(--space-6)+env(safe-area-inset-bottom))]',
+          'animate-fade-in flex-1'
+        )}
+      >
+      <header className="mb-[var(--space-4)]">
+        <div className="flex items-center justify-between mb-[var(--space-2)]">
           <div>
-            <p className="text-[9px] uppercase tracking-wide text-[var(--text-tertiary)] font-semibold mb-1">
+            <p
+              className={cn(
+                'text-[var(--text-2xs)]',
+                'uppercase tracking-[var(--tracking-wide)]',
+                'text-[var(--text-tertiary)]',
+                'font-[var(--weight-semibold)]',
+                'mb-[var(--space-1)]'
+              )}
+            >
               {t('profile.account')}
             </p>
-            <h1 className="text-xl font-bold text-[var(--text-primary)] leading-tight">
+            <h1
+              className={cn(
+                'text-[var(--text-xl)]',
+                'font-[var(--weight-bold)]',
+                'text-[var(--text-primary)]',
+                'leading-[var(--leading-tight)]'
+              )}
+            >
               {t('profile.title')}
             </h1>
           </div>
@@ -110,18 +215,33 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
         </div>
       </header>
 
-      <main className="space-y-5 pb-4">
+      <main className="space-y-[var(--space-5)] pb-[var(--space-4)]">
         {/* Account Info */}
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4" style={{ boxShadow: 'var(--shadow-sm)' }}>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 bg-[var(--accent-light)] rounded-full flex items-center justify-center">
-              <UserIcon className="w-6 h-6 text-[var(--accent)]" />
+        <div
+          className={cn(
+            'bg-[var(--surface-primary)]',
+            'border border-[var(--border-default)]',
+            'rounded-[var(--radius-xl)]',
+            'p-[var(--space-4)]',
+            'shadow-[var(--shadow-sm)]'
+          )}
+        >
+          <div className="flex items-center gap-[var(--space-3)] mb-[var(--space-3)]">
+            <div
+              className={cn(
+                'w-12 h-12',
+                'bg-[var(--brand-primary-subtle)]',
+                'rounded-full',
+                'flex items-center justify-center'
+              )}
+            >
+              <UserIcon className="w-6 h-6 text-[var(--brand-primary)]" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-[var(--text-primary)]">
+              <h2 className="text-[var(--text-base)] font-[var(--weight-bold)] text-[var(--text-primary)]">
                 {user?.emailAddresses[0]?.emailAddress?.split('@')[0] || t('profile.defaultName')}
               </h2>
-              <p className="text-[12px] text-[var(--text-secondary)]">
+              <p className="text-[var(--text-xs)] text-[var(--text-secondary)]">
                 {t('profile.workoutsCompleted', { count: logs.length })}
               </p>
             </div>
@@ -129,55 +249,183 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
 
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-[var(--surface-secondary)] hover:bg-[var(--surface-hover)] transition-all"
+            className={cn(
+              'w-full',
+              'flex items-center justify-between',
+              'px-[var(--space-3)] py-[var(--space-2-5)]',
+              'rounded-[var(--radius-lg)]',
+              'bg-[var(--surface-secondary)]',
+              'hover:bg-[var(--surface-hover)]',
+              'transition-all duration-[var(--duration-fast)]'
+            )}
           >
-            <span className="text-[13px] font-medium text-[var(--text-primary)]">{t('auth.signOut')}</span>
+            <span className="text-[var(--text-sm)] font-[var(--weight-medium)] text-[var(--text-primary)]">
+              {t('auth.signOut')}
+            </span>
             <SignOutIcon className="w-4 h-4 text-[var(--text-tertiary)]" />
           </button>
         </div>
 
-        {/* Body Metrics - Moved up */}
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4" style={{ boxShadow: 'var(--shadow-sm)' }}>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-bold text-[var(--text-primary)]">
+        {/* Body Metrics */}
+        <div
+          className={cn(
+            'bg-[var(--surface-primary)]',
+            'border border-[var(--border-default)]',
+            'rounded-[var(--radius-xl)]',
+            'p-[var(--space-4)]',
+            'shadow-[var(--shadow-sm)]'
+          )}
+        >
+          <div className="flex items-center justify-between mb-[var(--space-3)]">
+            <h3 className="text-[var(--text-base)] font-[var(--weight-bold)] text-[var(--text-primary)]">
               {t('profile.bodyMetrics')}
             </h3>
             <button
               onClick={() => setIsEditingMetrics(!isEditingMetrics)}
-              className="p-1.5 rounded-lg hover:bg-[var(--surface-secondary)] transition"
+              className={cn(
+                'p-[var(--space-1-5)]',
+                'rounded-[var(--radius-lg)]',
+                'hover:bg-[var(--surface-secondary)]',
+                'transition-all duration-[var(--duration-fast)]'
+              )}
             >
               <CogIcon className="w-4 h-4 text-[var(--text-secondary)]" />
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="text-center p-4 bg-gradient-to-br from-[var(--primary-light)] to-transparent rounded-2xl border border-[var(--primary)]/20">
-              <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1">Weight</p>
-              <p className="text-3xl font-black text-[var(--primary)] stat-number mb-1">
+          <div className="grid grid-cols-3 gap-[var(--space-3)]">
+            <div
+              className={cn(
+                'text-center',
+                'p-[var(--space-4)]',
+                'bg-gradient-to-br from-[var(--brand-primary-subtle)] to-transparent',
+                'rounded-[var(--radius-2xl)]',
+                'border border-[var(--brand-primary)]/20',
+                'hover:border-[var(--brand-primary)]/50',
+                'hover:shadow-[var(--shadow-md)]',
+                'hover:-translate-y-[2px]',
+                'transition-all duration-[var(--duration-normal)]',
+                'cursor-default group'
+              )}
+            >
+              <p
+                className={cn(
+                  'text-[var(--text-2xs)]',
+                  'uppercase tracking-[var(--tracking-wider)]',
+                  'text-[var(--text-tertiary)]',
+                  'font-[var(--weight-bold)]',
+                  'mb-[var(--space-1)]'
+                )}
+              >
+                Weight
+              </p>
+              <p
+                className={cn(
+                  'text-[var(--text-2xl)]',
+                  'font-[var(--weight-black)]',
+                  'text-[var(--brand-primary)]',
+                  'tabular-nums',
+                  'mb-[var(--space-1)]',
+                  'group-hover:scale-105',
+                  'transition-transform duration-[var(--duration-fast)]'
+                )}
+              >
                 {bodyMetrics?.weight || '—'}
               </p>
-              <p className="text-[11px] text-[var(--text-secondary)] font-semibold">kg</p>
+              <p className="text-[var(--text-2xs)] text-[var(--text-secondary)] font-[var(--weight-semibold)]">
+                kg
+              </p>
             </div>
 
-            <div className="text-center p-4 bg-gradient-to-br from-[var(--accent-light)] to-transparent rounded-2xl border border-[var(--accent)]/20">
-              <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1">Body Fat</p>
-              <p className="text-3xl font-black text-[var(--accent)] stat-number mb-1">
+            <div
+              className={cn(
+                'text-center',
+                'p-[var(--space-4)]',
+                'bg-gradient-to-br from-[var(--brand-primary)]/10 to-transparent',
+                'rounded-[var(--radius-2xl)]',
+                'border border-[var(--brand-primary)]/20',
+                'hover:border-[var(--brand-primary)]/50',
+                'hover:shadow-[var(--shadow-md)]',
+                'hover:-translate-y-[2px]',
+                'transition-all duration-[var(--duration-normal)]',
+                'cursor-default group'
+              )}
+            >
+              <p
+                className={cn(
+                  'text-[var(--text-2xs)]',
+                  'uppercase tracking-[var(--tracking-wider)]',
+                  'text-[var(--text-tertiary)]',
+                  'font-[var(--weight-bold)]',
+                  'mb-[var(--space-1)]'
+                )}
+              >
+                Body Fat
+              </p>
+              <p
+                className={cn(
+                  'text-[var(--text-2xl)]',
+                  'font-[var(--weight-black)]',
+                  'text-[var(--brand-primary)]',
+                  'tabular-nums',
+                  'mb-[var(--space-1)]',
+                  'group-hover:scale-105',
+                  'transition-transform duration-[var(--duration-fast)]'
+                )}
+              >
                 {bodyMetrics?.bodyFatPercentage || '—'}
               </p>
-              <p className="text-[11px] text-[var(--text-secondary)] font-semibold">%</p>
+              <p className="text-[var(--text-2xs)] text-[var(--text-secondary)] font-[var(--weight-semibold)]">
+                %
+              </p>
             </div>
 
-            <div className="text-center p-4 bg-gradient-to-br from-[var(--success-light)] to-transparent rounded-2xl border border-[var(--success)]/20">
-              <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1">Workouts</p>
-              <p className="text-3xl font-black text-[var(--success)] stat-number mb-1">
+            <div
+              className={cn(
+                'text-center',
+                'p-[var(--space-4)]',
+                'bg-gradient-to-br from-[var(--status-success-bg)]/10 to-transparent',
+                'rounded-[var(--radius-2xl)]',
+                'border border-[var(--status-success-bg)]/20',
+                'hover:border-[var(--status-success-bg)]/50',
+                'hover:shadow-[var(--shadow-md)]',
+                'hover:-translate-y-[2px]',
+                'transition-all duration-[var(--duration-normal)]',
+                'cursor-default group'
+              )}
+            >
+              <p
+                className={cn(
+                  'text-[var(--text-2xs)]',
+                  'uppercase tracking-[var(--tracking-wider)]',
+                  'text-[var(--text-tertiary)]',
+                  'font-[var(--weight-bold)]',
+                  'mb-[var(--space-1)]'
+                )}
+              >
+                Workouts
+              </p>
+              <p
+                className={cn(
+                  'text-[var(--text-2xl)]',
+                  'font-[var(--weight-black)]',
+                  'text-[var(--status-success-bg)]',
+                  'tabular-nums',
+                  'mb-[var(--space-1)]',
+                  'group-hover:scale-105',
+                  'transition-transform duration-[var(--duration-fast)]'
+                )}
+              >
                 {logs.length}
               </p>
-              <p className="text-[11px] text-[var(--text-secondary)] font-semibold">total</p>
+              <p className="text-[var(--text-2xs)] text-[var(--text-secondary)] font-[var(--weight-semibold)]">
+                total
+              </p>
             </div>
           </div>
 
           {!bodyMetrics && (
-            <p className="text-[11px] text-[var(--text-tertiary)] text-center mt-3">
+            <p className="text-[var(--text-2xs)] text-[var(--text-tertiary)] text-center mt-[var(--space-3)]">
               {t('profile.addBodyMetrics')}
             </p>
           )}
@@ -187,16 +435,24 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
         {userId && <StreakCounter userId={userId} />}
 
         {/* Recent Workouts */}
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4" style={{ boxShadow: 'var(--shadow-sm)' }}>
-          <div className="flex items-center gap-2 mb-3">
-            <BookCheckIcon className="w-4 h-4 text-[var(--accent)]" />
-            <h3 className="text-base font-bold text-[var(--text-primary)]">
+        <div
+          className={cn(
+            'bg-[var(--surface-primary)]',
+            'border border-[var(--border-default)]',
+            'rounded-[var(--radius-xl)]',
+            'p-[var(--space-4)]',
+            'shadow-[var(--shadow-sm)]'
+          )}
+        >
+          <div className="flex items-center gap-[var(--space-2)] mb-[var(--space-3)]">
+            <BookCheckIcon className="w-4 h-4 text-[var(--brand-primary)]" />
+            <h3 className="text-[var(--text-base)] font-[var(--weight-bold)] text-[var(--text-primary)]">
               {t('profile.recentWorkouts')}
             </h3>
           </div>
 
           {logs.length > 0 ? (
-            <div className="space-y-2">
+            <div className="space-y-[var(--space-2)]">
               {logs
                 .slice()
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -206,13 +462,13 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
                   return (
                     <div
                       key={index}
-                      className="flex items-center justify-between py-2 border-b border-[var(--border)] last:border-0"
+                      className="flex items-center justify-between py-[var(--space-2)] border-b border-[var(--border-default)] last:border-0"
                     >
                       <div>
-                        <p className="text-[13px] font-semibold text-[var(--text-primary)]">
+                        <p className="text-[var(--text-sm)] font-[var(--weight-semibold)] text-[var(--text-primary)]">
                           {log.focus}
                         </p>
-                        <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
+                        <p className="text-[var(--text-2xs)] text-[var(--text-tertiary)] mt-[var(--space-0-5)]">
                           {logDate.toLocaleDateString(undefined, {
                             month: 'short',
                             day: 'numeric'
@@ -220,31 +476,52 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
                           {log.durationMinutes && ` · ${log.durationMinutes} ${t('workout.min')}`}
                         </p>
                       </div>
-                      <p className="text-[11px] text-[var(--text-secondary)]">
+                      <p className="text-[var(--text-2xs)] text-[var(--text-secondary)]">
                         {t('workout.exerciseCount', { count: log.exercises.length })}
                       </p>
                     </div>
                   );
                 })}
 
-              <button className="w-full py-2.5 rounded-lg bg-[var(--surface-secondary)] hover:bg-[var(--surface-hover)] text-[13px] font-medium text-[var(--text-primary)] transition">
+              <button
+                className={cn(
+                  'w-full',
+                  'py-[var(--space-2-5)]',
+                  'rounded-[var(--radius-lg)]',
+                  'bg-[var(--surface-secondary)]',
+                  'hover:bg-[var(--surface-hover)]',
+                  'text-[var(--text-sm)]',
+                  'font-[var(--weight-medium)]',
+                  'text-[var(--text-primary)]',
+                  'transition-all duration-[var(--duration-fast)]'
+                )}
+              >
                 {t('profile.viewAllHistory')}
               </button>
             </div>
           ) : (
-            <p className="text-[13px] text-[var(--text-secondary)] text-center py-6">
+            <p className="text-[var(--text-sm)] text-[var(--text-secondary)] text-center py-[var(--space-6)]">
               {t('profile.noWorkoutsYet')}
             </p>
           )}
         </div>
 
         {/* Section Divider - Your Progress */}
-        <div className="relative py-2">
+        <div className="relative py-[var(--space-2)]">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t-2 border-[var(--border)]"></div>
+            <div className="w-full border-t-2 border-[var(--border-default)]"></div>
           </div>
           <div className="relative flex justify-center">
-            <span className="bg-[var(--background-primary)] px-4 text-[11px] uppercase tracking-widest font-bold text-[var(--text-tertiary)]">
+            <span
+              className={cn(
+                'bg-[var(--bg-primary)]',
+                'px-[var(--space-4)]',
+                'text-[var(--text-2xs)]',
+                'uppercase tracking-[var(--tracking-widest)]',
+                'font-[var(--weight-bold)]',
+                'text-[var(--text-tertiary)]'
+              )}
+            >
               Your Progress
             </span>
           </div>
@@ -253,10 +530,10 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
         {/* Progress Photos Section */}
         {userId && (
           <Card>
-            <CardHeader className="p-4 border-b border-[var(--border)]">
+            <CardHeader className="p-[var(--space-4)] border-b border-[var(--border-default)]">
               <div className="flex items-center justify-between">
-                <h3 className="text-[16px] font-bold text-[var(--text-primary)] flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-[var(--accent)]">
+                <h3 className="text-[var(--text-md)] font-[var(--weight-bold)] text-[var(--text-primary)] flex items-center gap-[var(--space-2)]">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-[var(--brand-primary)]">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
                   </svg>
@@ -264,15 +541,24 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
                 </h3>
                 <button
                   onClick={() => setIsPhotoCaptureOpen(true)}
-                  className="px-3 py-1.5 text-[12px] font-bold bg-gradient-to-r from-[var(--accent)] to-[var(--accent-dark)] text-white rounded-lg hover:shadow-lg transition-all"
+                  className={cn(
+                    'px-[var(--space-3)] py-[var(--space-1-5)]',
+                    'text-[var(--text-xs)]',
+                    'font-[var(--weight-bold)]',
+                    'bg-gradient-to-r from-[var(--brand-primary)] to-[var(--brand-primary-hover)]',
+                    'text-[var(--text-on-brand)]',
+                    'rounded-[var(--radius-lg)]',
+                    'hover:shadow-[var(--shadow-lg)]',
+                    'transition-all duration-[var(--duration-fast)]'
+                  )}
                 >
                   + Add Photo
                 </button>
               </div>
             </CardHeader>
-            <CardContent className="p-4">
+            <CardContent className="p-[var(--space-4)]">
               {latestPhoto ? (
-                <div className="space-y-3">
+                <div className="space-y-[var(--space-3)]">
                   <div className="max-w-sm mx-auto">
                     <ProgressPhotoCard
                       photoUrl={latestPhoto.photoUrl}
@@ -283,27 +569,54 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
                   </div>
                   <button
                     onClick={() => setViewAllPhotos(true)}
-                    className="w-full py-2.5 rounded-lg bg-[var(--surface-secondary)] hover:bg-[var(--surface-hover)] text-[13px] font-medium text-[var(--text-primary)] transition"
+                    className={cn(
+                      'w-full',
+                      'py-[var(--space-2-5)]',
+                      'rounded-[var(--radius-lg)]',
+                      'bg-[var(--surface-secondary)]',
+                      'hover:bg-[var(--surface-hover)]',
+                      'text-[var(--text-sm)]',
+                      'font-[var(--weight-medium)]',
+                      'text-[var(--text-primary)]',
+                      'transition-all duration-[var(--duration-fast)]'
+                    )}
                   >
                     View All Photos
                   </button>
                 </div>
               ) : (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--surface-secondary)] flex items-center justify-center">
+                <div className="text-center py-[var(--space-8)]">
+                  <div
+                    className={cn(
+                      'w-16 h-16',
+                      'mx-auto mb-[var(--space-4)]',
+                      'rounded-full',
+                      'bg-[var(--surface-secondary)]',
+                      'flex items-center justify-center'
+                    )}
+                  >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-[var(--text-tertiary)]">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                     </svg>
                   </div>
-                  <p className="text-[15px] font-semibold text-[var(--text-primary)] mb-2">
+                  <p className="text-[var(--text-base)] font-[var(--weight-semibold)] text-[var(--text-primary)] mb-[var(--space-2)]">
                     No progress photos yet
                   </p>
-                  <p className="text-[13px] text-[var(--text-secondary)] max-w-sm mx-auto mb-4">
+                  <p className="text-[var(--text-sm)] text-[var(--text-secondary)] max-w-sm mx-auto mb-[var(--space-4)]">
                     Start tracking your transformation with AI-powered body composition analysis
                   </p>
                   <button
                     onClick={() => setIsPhotoCaptureOpen(true)}
-                    className="px-6 py-3 bg-gradient-to-r from-[var(--accent)] to-[var(--accent-dark)] text-white text-[14px] font-bold rounded-lg hover:shadow-lg transition-all"
+                    className={cn(
+                      'px-[var(--space-6)] py-[var(--space-3)]',
+                      'bg-gradient-to-r from-[var(--brand-primary)] to-[var(--brand-primary-hover)]',
+                      'text-[var(--text-on-brand)]',
+                      'text-[var(--text-sm)]',
+                      'font-[var(--weight-bold)]',
+                      'rounded-[var(--radius-lg)]',
+                      'hover:shadow-[var(--shadow-lg)]',
+                      'transition-all duration-[var(--duration-fast)]'
+                    )}
                   >
                     Upload First Photo
                   </button>
@@ -316,49 +629,70 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
         {/* Achievements Section */}
         {userId && (
           <Card>
-            <CardHeader className="p-4 border-b border-[var(--border)]">
-              <h3 className="text-[16px] font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <TrophyIcon className="w-5 h-5 text-[var(--accent)]" />
+            <CardHeader className="p-[var(--space-4)] border-b border-[var(--border-default)]">
+              <h3 className="text-[var(--text-md)] font-[var(--weight-bold)] text-[var(--text-primary)] flex items-center gap-[var(--space-2)]">
+                <TrophyIcon className="w-5 h-5 text-[var(--brand-primary)]" />
                 Achievements
               </h3>
             </CardHeader>
-            <CardContent className="p-4">
+            <CardContent className="p-[var(--space-4)]">
               {/* Heat Map */}
               <HeatMapCalendar userId={userId} />
 
               {/* Achievement Badges */}
-              <div className="mt-4">
-                <p className="text-[12px] font-bold text-[var(--text-primary)] mb-3">
+              <div className="mt-[var(--space-4)]">
+                <p className="text-[var(--text-xs)] font-[var(--weight-bold)] text-[var(--text-primary)] mb-[var(--space-3)]">
                   Unlocked Badges
                 </p>
                 {achievements && achievements.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-[var(--space-3)] animate-stagger">
                     {achievements.map((achievement) => (
                       <div
                         key={achievement._id}
-                        className="p-4 bg-gradient-to-br from-[var(--accent-light)] to-[var(--primary-light)] border border-[var(--border)] rounded-xl text-center"
+                        className={cn(
+                          'p-[var(--space-4)]',
+                          'bg-gradient-to-br from-[var(--brand-primary-subtle)] to-[var(--brand-primary)]/5',
+                          'border border-[var(--border-default)]',
+                          'rounded-[var(--radius-xl)]',
+                          'text-center',
+                          'hover:border-[var(--brand-primary)]',
+                          'hover:shadow-[var(--shadow-lg)]',
+                          'hover:-translate-y-[4px]',
+                          'transition-all duration-[var(--duration-normal)]',
+                          'cursor-default group'
+                        )}
                       >
-                        <div className="text-4xl mb-2">{achievement.icon}</div>
-                        <p className="text-[13px] font-bold text-[var(--text-primary)] mb-1">
+                        <div className="text-4xl mb-[var(--space-2)] group-hover:scale-110 transition-transform duration-[var(--duration-normal)]">
+                          {achievement.icon}
+                        </div>
+                        <p className="text-[var(--text-sm)] font-[var(--weight-bold)] text-[var(--text-primary)] mb-[var(--space-1)]">
                           {achievement.displayName}
                         </p>
-                        <p className="text-[10px] text-[var(--text-secondary)] mb-2">
+                        <p className="text-[var(--text-2xs)] text-[var(--text-secondary)] mb-[var(--space-2)]">
                           {achievement.description}
                         </p>
-                        <div className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[9px] font-semibold ${
-                          achievement.tier === 'platinum' ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white' :
-                          achievement.tier === 'gold' ? 'bg-gradient-to-r from-yellow-400 to-orange-400 text-white' :
-                          achievement.tier === 'silver' ? 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800' :
-                          'bg-gradient-to-r from-orange-600 to-orange-700 text-white'
-                        }`}>
+                        <div
+                          className={cn(
+                            'inline-flex items-center',
+                            'rounded-full',
+                            'px-[var(--space-2-5)] py-[var(--space-0-5)]',
+                            'text-[var(--text-2xs)]',
+                            'font-[var(--weight-semibold)]',
+                            'transition-transform group-hover:scale-105',
+                            achievement.tier === 'platinum' ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white' :
+                            achievement.tier === 'gold' ? 'bg-gradient-to-r from-yellow-400 to-orange-400 text-white' :
+                            achievement.tier === 'silver' ? 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800' :
+                            'bg-gradient-to-r from-orange-600 to-orange-700 text-white'
+                          )}
+                        >
                           {achievement.tier.toUpperCase()}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-6">
-                    <p className="text-[13px] text-[var(--text-secondary)]">
+                  <div className="text-center py-[var(--space-6)]">
+                    <p className="text-[var(--text-sm)] text-[var(--text-secondary)]">
                       Complete your first workout to unlock achievements!
                     </p>
                   </div>
@@ -368,21 +702,57 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
           </Card>
         )}
 
+        {/* Charts Section */}
+        {logs.length > 0 && (
+          <div className="space-y-[var(--space-4)]">
+            {/* Volume Chart */}
+            <VolumeChart data={volumeData} />
+
+            {/* PR History */}
+            <PRHistoryChart records={prHistory} />
+          </div>
+        )}
+
         {/* User Code Card */}
         {userProfile?.userCode && (
           <Card>
-            <CardHeader className="p-4 border-b border-[var(--border)]">
-              <h3 className="text-[16px] font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <UsersIcon className="w-5 h-5 text-[var(--accent)]" />
+            <CardHeader className="p-[var(--space-4)] border-b border-[var(--border-default)]">
+              <h3 className="text-[var(--text-md)] font-[var(--weight-bold)] text-[var(--text-primary)] flex items-center gap-[var(--space-2)]">
+                <UsersIcon className="w-5 h-5 text-[var(--brand-primary)]" />
                 Your Buddy Code
               </h3>
             </CardHeader>
-            <CardContent className="p-4">
-              <div className="p-5 bg-gradient-to-br from-[var(--primary-light)] to-[var(--accent-light)] border-2 border-[var(--primary)]/20 rounded-2xl text-center">
-                <p className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-bold mb-2">
+            <CardContent className="p-[var(--space-4)]">
+              <div
+                className={cn(
+                  'p-[var(--space-5)]',
+                  'bg-gradient-to-br from-[var(--brand-primary-subtle)] to-[var(--brand-primary)]/10',
+                  'border-2 border-[var(--brand-primary)]/20',
+                  'rounded-[var(--radius-2xl)]',
+                  'text-center'
+                )}
+              >
+                <p
+                  className={cn(
+                    'text-[var(--text-2xs)]',
+                    'uppercase tracking-[var(--tracking-widest)]',
+                    'text-[var(--text-tertiary)]',
+                    'font-[var(--weight-bold)]',
+                    'mb-[var(--space-2)]'
+                  )}
+                >
                   Share This Code
                 </p>
-                <p className="text-3xl font-black font-mono tracking-wider text-[var(--primary)] mb-3">
+                <p
+                  className={cn(
+                    'text-[var(--text-2xl)]',
+                    'font-[var(--weight-black)]',
+                    'font-mono',
+                    'tracking-[var(--tracking-wider)]',
+                    'text-[var(--brand-primary)]',
+                    'mb-[var(--space-3)]'
+                  )}
+                >
                   {userProfile.userCode}
                 </p>
                 <button
@@ -390,12 +760,22 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
                     navigator.clipboard.writeText(userProfile.userCode!);
                     notify({ type: 'success', message: 'Code copied to clipboard!' });
                   }}
-                  className="px-4 py-2 bg-[var(--primary)] text-white rounded-lg font-bold text-[13px] hover:bg-[var(--primary-hover)] transition-all active:scale-95"
+                  className={cn(
+                    'px-[var(--space-4)] py-[var(--space-2)]',
+                    'bg-[var(--brand-primary)]',
+                    'text-[var(--text-on-brand)]',
+                    'rounded-[var(--radius-lg)]',
+                    'font-[var(--weight-bold)]',
+                    'text-[var(--text-sm)]',
+                    'hover:bg-[var(--brand-primary-hover)]',
+                    'transition-all duration-[var(--duration-fast)]',
+                    'active:scale-[0.95]'
+                  )}
                 >
                   Copy Code
                 </button>
               </div>
-              <p className="text-[12px] text-[var(--text-secondary)] text-center mt-3">
+              <p className="text-[var(--text-xs)] text-[var(--text-secondary)] text-center mt-[var(--space-3)]">
                 Share this code with friends to become workout buddies!
               </p>
             </CardContent>
@@ -403,12 +783,21 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
         )}
 
         {/* Section Divider - Settings */}
-        <div className="relative py-2">
+        <div className="relative py-[var(--space-2)]">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t-2 border-[var(--border)]"></div>
+            <div className="w-full border-t-2 border-[var(--border-default)]"></div>
           </div>
           <div className="relative flex justify-center">
-            <span className="bg-[var(--background-primary)] px-4 text-[11px] uppercase tracking-widest font-bold text-[var(--text-tertiary)]">
+            <span
+              className={cn(
+                'bg-[var(--bg-primary)]',
+                'px-[var(--space-4)]',
+                'text-[var(--text-2xs)]',
+                'uppercase tracking-[var(--tracking-widest)]',
+                'font-[var(--weight-bold)]',
+                'text-[var(--text-tertiary)]'
+              )}
+            >
               Settings & Details
             </span>
           </div>
@@ -416,16 +805,34 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
 
         {/* Collapsible Training Preferences */}
         {userProfile?.trainingPreferences && (
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden" style={{ boxShadow: 'var(--shadow-sm)' }}>
+          <div
+            className={cn(
+              'bg-[var(--surface-primary)]',
+              'border border-[var(--border-default)]',
+              'rounded-[var(--radius-xl)]',
+              'overflow-hidden',
+              'shadow-[var(--shadow-sm)]'
+            )}
+          >
             <button
               onClick={() => setShowTrainingPrefs(!showTrainingPrefs)}
-              className="w-full p-4 flex items-center justify-between hover:bg-[var(--surface-hover)] transition-colors"
+              className={cn(
+                'w-full',
+                'p-[var(--space-4)]',
+                'flex items-center justify-between',
+                'hover:bg-[var(--surface-hover)]',
+                'transition-colors duration-[var(--duration-fast)]'
+              )}
             >
-              <h3 className="text-base font-bold text-[var(--text-primary)]">
+              <h3 className="text-[var(--text-base)] font-[var(--weight-bold)] text-[var(--text-primary)]">
                 {t('profile.trainingPreferences')}
               </h3>
               <svg
-                className={`w-5 h-5 text-[var(--text-secondary)] transition-transform ${showTrainingPrefs ? 'rotate-180' : ''}`}
+                className={cn(
+                  'w-5 h-5 text-[var(--text-secondary)]',
+                  'transition-transform duration-[var(--duration-fast)]',
+                  showTrainingPrefs && 'rotate-180'
+                )}
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -435,93 +842,111 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
             </button>
 
             {showTrainingPrefs && (
-              <div className="px-4 pb-4 border-t border-[var(--border)] pt-4 space-y-2.5">
-              <div>
-                <p className="text-[9px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1">
-                  {t('profile.primaryGoal')}
-                </p>
-                <p className="text-[13px] font-semibold text-[var(--text-primary)]">
-                  {userProfile.trainingPreferences.primary_goal}
-                </p>
-                {userProfile.trainingPreferences.goal_explanation && (
-                  <p className="text-[11px] text-[var(--text-secondary)] mt-1 italic">
-                    "{userProfile.trainingPreferences.goal_explanation}"
-                  </p>
-                )}
-              </div>
-              
-              <div className="grid grid-cols-2 gap-2">
+              <div className="px-[var(--space-4)] pb-[var(--space-4)] border-t border-[var(--border-default)] pt-[var(--space-4)] space-y-[var(--space-2-5)]">
                 <div>
-                  <p className="text-[9px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1">
-                    {t('profile.experience')}
+                  <p className="text-[var(--text-2xs)] uppercase tracking-[var(--tracking-wider)] text-[var(--text-tertiary)] font-[var(--weight-bold)] mb-[var(--space-1)]">
+                    {t('profile.primaryGoal')}
                   </p>
-                  <p className="text-[13px] font-semibold text-[var(--text-primary)]">
-                    {userProfile.trainingPreferences.experience_level}
+                  <p className="text-[var(--text-sm)] font-[var(--weight-semibold)] text-[var(--text-primary)]">
+                    {userProfile.trainingPreferences.primary_goal}
                   </p>
+                  {userProfile.trainingPreferences.goal_explanation && (
+                    <p className="text-[var(--text-2xs)] text-[var(--text-secondary)] mt-[var(--space-1)] italic">
+                      "{userProfile.trainingPreferences.goal_explanation}"
+                    </p>
+                  )}
                 </div>
-                <div>
-                  <p className="text-[9px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1">
-                    {t('profile.frequency')}
-                  </p>
-                  <p className="text-[13px] font-semibold text-[var(--text-primary)]">
-                    {t('profile.daysPerWeek', { days: userProfile.trainingPreferences.training_frequency })}
-                  </p>
-                </div>
-              </div>
-              
-              {userProfile.trainingPreferences.pain_points.length > 0 && (
-                <div>
-                  <p className="text-[9px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1">
-                    {t('profile.painPoints')}
-                  </p>
-                  <p className="text-[13px] text-[var(--text-primary)]">
-                    {userProfile.trainingPreferences.pain_points.join(', ')}
-                  </p>
-                </div>
-              )}
-              
-              {userProfile.trainingPreferences.sport && (
-                <div>
-                  <p className="text-[9px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1">
-                    {t('profile.sport')}
-                  </p>
-                  <p className="text-[13px] text-[var(--text-primary)]">
-                    {userProfile.trainingPreferences.sport}
-                  </p>
-                </div>
-              )}
-              
-              {userProfile.trainingPreferences.additional_notes && (
-                <div>
-                  <p className="text-[9px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-1">
-                    {t('profile.additionalNotes')}
-                  </p>
-                  <p className="text-[12px] text-[var(--text-secondary)]">
-                    {userProfile.trainingPreferences.additional_notes}
-                  </p>
-                </div>
-              )}
 
-              <p className="text-[10px] text-[var(--text-tertiary)] mt-3 pt-3 border-t border-[var(--border)]">
-                {t('profile.lastUpdated', { date: new Date(userProfile.trainingPreferences.last_updated).toLocaleDateString() })}
-              </p>
-            </div>
+                <div className="grid grid-cols-2 gap-[var(--space-2)]">
+                  <div>
+                    <p className="text-[var(--text-2xs)] uppercase tracking-[var(--tracking-wider)] text-[var(--text-tertiary)] font-[var(--weight-bold)] mb-[var(--space-1)]">
+                      {t('profile.experience')}
+                    </p>
+                    <p className="text-[var(--text-sm)] font-[var(--weight-semibold)] text-[var(--text-primary)]">
+                      {userProfile.trainingPreferences.experience_level}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[var(--text-2xs)] uppercase tracking-[var(--tracking-wider)] text-[var(--text-tertiary)] font-[var(--weight-bold)] mb-[var(--space-1)]">
+                      {t('profile.frequency')}
+                    </p>
+                    <p className="text-[var(--text-sm)] font-[var(--weight-semibold)] text-[var(--text-primary)]">
+                      {t('profile.daysPerWeek', { days: userProfile.trainingPreferences.training_frequency })}
+                    </p>
+                  </div>
+                </div>
+
+                {userProfile.trainingPreferences.pain_points.length > 0 && (
+                  <div>
+                    <p className="text-[var(--text-2xs)] uppercase tracking-[var(--tracking-wider)] text-[var(--text-tertiary)] font-[var(--weight-bold)] mb-[var(--space-1)]">
+                      {t('profile.painPoints')}
+                    </p>
+                    <p className="text-[var(--text-sm)] text-[var(--text-primary)]">
+                      {userProfile.trainingPreferences.pain_points.join(', ')}
+                    </p>
+                  </div>
+                )}
+
+                {userProfile.trainingPreferences.sport && (
+                  <div>
+                    <p className="text-[var(--text-2xs)] uppercase tracking-[var(--tracking-wider)] text-[var(--text-tertiary)] font-[var(--weight-bold)] mb-[var(--space-1)]">
+                      {t('profile.sport')}
+                    </p>
+                    <p className="text-[var(--text-sm)] text-[var(--text-primary)]">
+                      {userProfile.trainingPreferences.sport}
+                    </p>
+                  </div>
+                )}
+
+                {userProfile.trainingPreferences.additional_notes && (
+                  <div>
+                    <p className="text-[var(--text-2xs)] uppercase tracking-[var(--tracking-wider)] text-[var(--text-tertiary)] font-[var(--weight-bold)] mb-[var(--space-1)]">
+                      {t('profile.additionalNotes')}
+                    </p>
+                    <p className="text-[var(--text-xs)] text-[var(--text-secondary)]">
+                      {userProfile.trainingPreferences.additional_notes}
+                    </p>
+                  </div>
+                )}
+
+                <p className="text-[var(--text-2xs)] text-[var(--text-tertiary)] mt-[var(--space-3)] pt-[var(--space-3)] border-t border-[var(--border-default)]">
+                  {t('profile.lastUpdated', { date: new Date(userProfile.trainingPreferences.last_updated).toLocaleDateString() })}
+                </p>
+              </div>
             )}
           </div>
         )}
 
         {/* Collapsible Injury Profile */}
         {userId && fullUserData?.injuryProfile && (
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden" style={{ boxShadow: 'var(--shadow-sm)' }}>
+          <div
+            className={cn(
+              'bg-[var(--surface-primary)]',
+              'border border-[var(--border-default)]',
+              'rounded-[var(--radius-xl)]',
+              'overflow-hidden',
+              'shadow-[var(--shadow-sm)]'
+            )}
+          >
             <button
               onClick={() => setShowInjuryProfile(!showInjuryProfile)}
-              className="w-full p-4 flex items-center justify-between hover:bg-[var(--surface-hover)] transition-colors"
+              className={cn(
+                'w-full',
+                'p-[var(--space-4)]',
+                'flex items-center justify-between',
+                'hover:bg-[var(--surface-hover)]',
+                'transition-colors duration-[var(--duration-fast)]'
+              )}
             >
-              <h3 className="text-base font-bold text-[var(--text-primary)]">
+              <h3 className="text-[var(--text-base)] font-[var(--weight-bold)] text-[var(--text-primary)]">
                 Injury Profile
               </h3>
               <svg
-                className={`w-5 h-5 text-[var(--text-secondary)] transition-transform ${showInjuryProfile ? 'rotate-180' : ''}`}
+                className={cn(
+                  'w-5 h-5 text-[var(--text-secondary)]',
+                  'transition-transform duration-[var(--duration-fast)]',
+                  showInjuryProfile && 'rotate-180'
+                )}
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -531,7 +956,7 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
             </button>
 
             {showInjuryProfile && (
-              <div className="border-t border-[var(--border)]">
+              <div className="border-t border-[var(--border-default)]">
                 <InjuryProfile
                   userId={userId}
                   injuryProfile={fullUserData?.injuryProfile}
@@ -542,19 +967,38 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
         )}
 
         {/* Combined Settings Section */}
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4" style={{ boxShadow: 'var(--shadow-sm)' }}>
-          <h3 className="text-base font-bold text-[var(--text-primary)] mb-4">
+        <div
+          className={cn(
+            'bg-[var(--surface-primary)]',
+            'border border-[var(--border-default)]',
+            'rounded-[var(--radius-xl)]',
+            'p-[var(--space-4)]',
+            'shadow-[var(--shadow-sm)]'
+          )}
+        >
+          <h3 className="text-[var(--text-base)] font-[var(--weight-bold)] text-[var(--text-primary)] mb-[var(--space-4)]">
             Settings
           </h3>
 
           {/* Plan Management */}
-          <div className="mb-5">
-            <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-2">
+          <div className="mb-[var(--space-5)]">
+            <p className="text-[var(--text-2xs)] uppercase tracking-[var(--tracking-wider)] text-[var(--text-tertiary)] font-[var(--weight-bold)] mb-[var(--space-2)]">
               Plan Management
             </p>
             <button
               onClick={handleCreateNewPlan}
-              className="w-full py-3 rounded-lg font-semibold text-[13px] text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] transition-all shadow-card"
+              className={cn(
+                'w-full',
+                'py-[var(--space-3)]',
+                'rounded-[var(--radius-lg)]',
+                'font-[var(--weight-semibold)]',
+                'text-[var(--text-sm)]',
+                'text-[var(--text-on-brand)]',
+                'bg-[var(--brand-primary)]',
+                'hover:bg-[var(--brand-primary-hover)]',
+                'transition-all duration-[var(--duration-fast)]',
+                'shadow-[var(--shadow-md)]'
+              )}
             >
               {t('profile.createNewPlan')}
             </button>
@@ -562,20 +1006,114 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
 
           {/* App Preferences */}
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold mb-2">
+            <p className="text-[var(--text-2xs)] uppercase tracking-[var(--tracking-wider)] text-[var(--text-tertiary)] font-[var(--weight-bold)] mb-[var(--space-2)]">
               Preferences
             </p>
-            <div className="space-y-2">
-              <button className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-[var(--surface-secondary)] hover:bg-[var(--surface-hover)] transition-all">
-                <span className="text-[13px] font-medium text-[var(--text-primary)]">{t('profile.notificationSettings')}</span>
+            <div className="space-y-[var(--space-2)]">
+              {/* Theme Toggle */}
+              {onToggleTheme && (
+                <button
+                  onClick={onToggleTheme}
+                  className={cn(
+                    'w-full',
+                    'flex items-center justify-between',
+                    'px-[var(--space-3)] py-[var(--space-2-5)]',
+                    'rounded-[var(--radius-lg)]',
+                    'bg-[var(--surface-secondary)]',
+                    'hover:bg-[var(--surface-hover)]',
+                    'transition-all duration-[var(--duration-fast)]',
+                    'group'
+                  )}
+                >
+                  <div className="flex items-center gap-[var(--space-3)]">
+                    <div
+                      className={cn(
+                        'w-8 h-8',
+                        'rounded-[var(--radius-lg)]',
+                        'bg-gradient-to-br from-[var(--brand-primary-subtle)] to-[var(--brand-primary)]/10',
+                        'flex items-center justify-center'
+                      )}
+                    >
+                      {theme === 'dark' ? (
+                        <MoonIcon className="w-4 h-4 text-[var(--brand-primary)]" />
+                      ) : (
+                        <SunIcon className="w-4 h-4 text-[var(--brand-primary)]" />
+                      )}
+                    </div>
+                    <span className="text-[var(--text-sm)] font-[var(--weight-medium)] text-[var(--text-primary)]">
+                      {theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
+                    </span>
+                  </div>
+                  {/* Toggle switch visual */}
+                  <div
+                    className={cn(
+                      'w-11 h-6',
+                      'rounded-full',
+                      'relative',
+                      'transition-all duration-[var(--duration-normal)]',
+                      theme === 'dark' ? 'bg-[var(--brand-primary)]' : 'bg-[var(--border-strong)]'
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'absolute top-1',
+                        'w-4 h-4',
+                        'rounded-full',
+                        'bg-white',
+                        'shadow-[var(--shadow-sm)]',
+                        'transition-all duration-[var(--duration-normal)]',
+                        theme === 'dark' ? 'left-6' : 'left-1'
+                      )}
+                    />
+                  </div>
+                </button>
+              )}
+              <button
+                className={cn(
+                  'w-full',
+                  'flex items-center justify-between',
+                  'px-[var(--space-3)] py-[var(--space-2-5)]',
+                  'rounded-[var(--radius-lg)]',
+                  'bg-[var(--surface-secondary)]',
+                  'hover:bg-[var(--surface-hover)]',
+                  'transition-all duration-[var(--duration-fast)]'
+                )}
+              >
+                <span className="text-[var(--text-sm)] font-[var(--weight-medium)] text-[var(--text-primary)]">
+                  {t('profile.notificationSettings')}
+                </span>
                 <span className="text-[var(--text-tertiary)]">→</span>
               </button>
-              <button className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-[var(--surface-secondary)] hover:bg-[var(--surface-hover)] transition-all">
-                <span className="text-[13px] font-medium text-[var(--text-primary)]">{t('profile.units')}</span>
+              <button
+                className={cn(
+                  'w-full',
+                  'flex items-center justify-between',
+                  'px-[var(--space-3)] py-[var(--space-2-5)]',
+                  'rounded-[var(--radius-lg)]',
+                  'bg-[var(--surface-secondary)]',
+                  'hover:bg-[var(--surface-hover)]',
+                  'transition-all duration-[var(--duration-fast)]'
+                )}
+              >
+                <span className="text-[var(--text-sm)] font-[var(--weight-medium)] text-[var(--text-primary)]">
+                  {t('profile.units')}
+                </span>
                 <span className="text-[var(--text-tertiary)]">→</span>
               </button>
-              <button className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-[var(--surface-secondary)] hover:bg-[var(--surface-hover)] transition-all">
-                <span className="text-[13px] font-medium text-[var(--text-primary)]">{t('profile.exportData')}</span>
+              <button
+                className={cn(
+                  'w-full',
+                  'flex items-center justify-between',
+                  'px-[var(--space-3)] py-[var(--space-2-5)]',
+                  'rounded-[var(--radius-lg)]',
+                  'bg-[var(--surface-secondary)]',
+                  'hover:bg-[var(--surface-hover)]',
+                  'transition-all duration-[var(--duration-fast)]'
+                )}
+              >
+                <span className="text-[var(--text-sm)] font-[var(--weight-medium)] text-[var(--text-primary)]">
+                  {t('profile.exportData')}
+                </span>
                 <span className="text-[var(--text-tertiary)]">→</span>
               </button>
             </div>
@@ -590,7 +1128,6 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
           isOpen={isPhotoCaptureOpen}
           onClose={() => setIsPhotoCaptureOpen(false)}
           onPhotoUploaded={() => {
-            // Refresh will happen automatically via Convex reactivity
             notify({ type: 'success', message: 'Photo uploaded successfully!' });
           }}
         />
@@ -599,21 +1136,43 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
       {/* View All Photos Modal */}
       {viewAllPhotos && userId && (
         <div
-          className="fixed inset-0 z-50 bg-[var(--background-primary)] overflow-y-auto animate-fade-in"
+          className={cn(
+            'fixed inset-0',
+            'z-[var(--z-modal)]',
+            'bg-[var(--bg-primary)]',
+            'overflow-y-auto',
+            'animate-fade-in'
+          )}
           onClick={() => setViewAllPhotos(false)}
         >
           <div
-            className="min-h-screen p-4 pb-[calc(2rem+env(safe-area-inset-bottom))]"
+            className="min-h-screen p-[var(--space-4)] pb-[calc(var(--space-8)+env(safe-area-inset-bottom))]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between mb-6 sticky top-0 bg-[var(--background-primary)]/95 backdrop-blur-sm py-4 z-10 border-b border-[var(--border)]">
-              <h2 className="text-[20px] font-bold text-[var(--text-primary)]">
+            <div
+              className={cn(
+                'flex items-center justify-between',
+                'mb-[var(--space-6)]',
+                'sticky top-0',
+                'bg-[var(--bg-primary)]',
+                'py-[var(--space-4)]',
+                'z-[var(--z-sticky)]',
+                'border-b border-[var(--border-default)]'
+              )}
+            >
+              <h2 className="text-[var(--text-xl)] font-[var(--weight-bold)] text-[var(--text-primary)]">
                 All Progress Photos
               </h2>
               <button
                 onClick={() => setViewAllPhotos(false)}
-                className="p-2 rounded-full bg-[var(--surface-secondary)] hover:bg-[var(--surface-hover)] transition-all"
+                className={cn(
+                  'p-[var(--space-2)]',
+                  'rounded-full',
+                  'bg-[var(--surface-secondary)]',
+                  'hover:bg-[var(--surface-hover)]',
+                  'transition-all duration-[var(--duration-fast)]'
+                )}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-[var(--text-primary)]">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -629,5 +1188,6 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
         </div>
       )}
     </div>
+    </>
   );
 }

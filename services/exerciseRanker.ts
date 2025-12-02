@@ -242,8 +242,8 @@ function calculateOverusePenalty(
     });
 
   const usageCount = recentSessions.reduce((count, session) => {
-    const exerciseUsed = session.exercises.some(ex => 
-      ex.exerciseName?.toLowerCase() === exerciseName.toLowerCase()
+    const exerciseUsed = session.exercises.some(ex =>
+      ex.exercise_name?.toLowerCase() === exerciseName.toLowerCase()
     );
     return exerciseUsed ? count + 1 : count;
   }, 0);

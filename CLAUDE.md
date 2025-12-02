@@ -2,422 +2,285 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## ⚠️ CRITICAL RULE: Single Source of Truth
+## ⚠️ 🚨 **ABSOLUTE RULE #0: This is an iPhone App, NOT a Web App**
 
-**MASTER_DOCUMENTATION.md is the SINGLE SOURCE OF TRUTH for this project.**
+**REBLD is a NATIVE iPhone application wrapped with Capacitor.**
 
-**MANDATORY: After ANY significant change (new features, architecture updates, security fixes, design changes, database schema modifications), you MUST update MASTER_DOCUMENTATION.md to reflect the current state.**
+### **Critical Facts:**
 
-**What constitutes a "significant change":**
-- New features added
-- Database schema modifications
+1. **Platform: iPhone ONLY**
+   - This is NOT a responsive web app
+   - This is NOT a desktop app
+   - This is a **native iOS app** using web technologies via Capacitor
+   - Users install from App Store, not browser
+
+2. **ALL UI/UX Must Be iPhone-Native:**
+   - ✅ **Design for 375-430px width ONLY** (iPhone screens)
+   - ✅ **Touch-first** - min 44x44pt touch targets (iOS HIG)
+   - ✅ **Respect safe areas** - `env(safe-area-inset-top/bottom)` for notch/home indicator
+   - ✅ **Use haptic feedback** - via `useHaptic()` hook
+   - ✅ **iOS-style interactions** - swipe gestures, bottom sheets, native modals
+   - ❌ **NO hover states** - use `:active` instead
+   - ❌ **NO desktop layouts** - no sidebars, wide tables, or horizontal scrolling
+   - ❌ **NO mouse-specific interactions** - no right-click, drag-and-drop, etc.
+
+3. **Before Changing ANY Component:**
+   **ASK YOURSELF:**
+   - ✅ Does this work with **thumb reach** on iPhone?
+   - ✅ Does this respect **safe areas** (notch, home indicator)?
+   - ✅ Does this feel **native** to iOS users?
+   - ✅ Can this be used **one-handed**?
+   - ✅ Are touch targets ≥ 44x44pt?
+   - ❌ Am I adding desktop-only features?
+
+4. **Capacitor Integration:**
+   - Use Capacitor plugins for native features
+   - Already integrated: Haptics, Keyboard, Storage
+   - See `hooks/useAnimations.ts` for haptic feedback
+   - See `capacitor.config.ts` for iOS config
+
+5. **Performance Targets:**
+   - Smooth 60fps on iPhone 12+
+   - Works on cellular (not just WiFi)
+   - Minimal battery drain
+   - Fast on-device
+
+**VIOLATION OF THIS RULE = BROKEN UX FOR ALL USERS**
+
+---
+
+## 🚨 ABSOLUTE RULE #1: Single Source of Truth
+
+**MASTER.md is the ONLY documentation file that should EVER be updated.**
+
+**THIS IS NON-NEGOTIABLE. VIOLATIONS WILL CAUSE DOCUMENTATION CHAOS.**
+
+### MANDATORY Update Protocol
+
+**AFTER ANY CHANGE (feature, fix, optimization, schema change, new file), YOU MUST:**
+
+1. **UPDATE MASTER.md IMMEDIATELY**
+   - Find the relevant section in MASTER.md
+   - Add/update information with specifics and code examples
+   - Update [11. Pending Tasks] if work is incomplete
+   - Add entry to [14. Recent Changes] with date and detailed summary
+   - Update diagrams/architecture if structure changed
+   - Keep all code examples accurate
+
+2. **NEVER CREATE NEW .md FILES**
+   - No STATUS.md
+   - No COMPLETE.md
+   - No PLAN.md
+   - No REPORT.md
+   - No GUIDE.md (except approved setup guides)
+   - No SUMMARY.md
+   - No IMPLEMENTATION.md
+   - **ABSOLUTELY NO EXCEPTIONS**
+
+3. **NEVER UPDATE (read-only reference files):**
+   - CLAUDE.md (this file - only for dev pattern changes)
+   - README.md (public quick start - rarely changed)
+   - DESIGN_SYSTEM.md (design tokens reference)
+   - VISUAL_ARCHITECTURE.md (diagrams only)
+   - CLERK_SETUP.md (setup guide)
+   - CONVEX_SETUP_GUIDE.md (setup guide)
+   - convex/BACKEND_IMPROVEMENTS.md (reference documentation)
+   - convex/IMPLEMENTATION_SUMMARY.md (reference documentation)
+
+### What Requires MASTER.md Update
+
+**EVERYTHING significant:**
+- New features or components
+- Database schema changes (new tables, fields, indexes)
 - Security improvements
-- Design system changes
-- API integrations
-- Component architecture changes
-- Data flow modifications
-- New dependencies or tools
-- UI/UX improvements
 - Performance optimizations
+- API integrations
+- Bug fixes that change behavior
+- New dependencies
+- Architecture changes
+- File structure changes
+- Configuration changes
+- New utilities or helpers
+- UI/UX improvements
+- Backend optimizations
 
-**How to update MASTER_DOCUMENTATION.md:**
-1. Read the relevant section of MASTER_DOCUMENTATION.md first
-2. Update with the new information (be specific, include code examples)
-3. Add entry to "Recent Improvements" section with date and detailed summary
-4. Update any affected diagrams, flowcharts, or architecture sections
-5. If schema changed, update the database schema section
-6. If new features added, update the features list and architecture
-7. Keep all code examples accurate and tested
+### Enforcement
 
-**Why this matters:**
-- Future AI assistants need accurate information to be productive
-- Developers joining the project rely on this doc for onboarding
-- Prevents knowledge loss across sessions and team members
-- Maintains consistency across all documentation
-- Serves as definitive guide for how the application works
+**If you create a new .md file or fail to update MASTER.md:**
+- You have violated the single source of truth rule
+- Documentation becomes fragmented
+- Future developers will be confused
+- You must immediately delete the file and update MASTER.md instead
 
-**Related Documentation (secondary, reference only):**
-- CLAUDE.md (this file) - Quick reference for AI assistants
-- README.md - Quick start guide for new developers
-- VISUAL_ARCHITECTURE.md - Diagrams, flowcharts, and visual schemas
-- DESIGN_SYSTEM.md - Complete design reference
+**This rule applies to ALL AI assistants, ALL developers, ALL contexts.**
 
-## ⛔ CRITICAL RULE: NO NEW MARKDOWN FILES
+---
 
-**NEVER create new .md files in this project.**
+## 🔥 CRITICAL INSTRUCTION: Honest Feedback Policy
 
-**The ONLY markdown files that should exist:**
-1. **MASTER_DOCUMENTATION.md** - Single source of truth (main doc)
-2. **VISUAL_ARCHITECTURE.md** - System diagrams and flowcharts
-3. **CLAUDE.md** - AI assistant instructions (this file)
-4. **README.md** - Public quick start guide
-5. **CLERK_SETUP.md** - Authentication setup guide
-6. **CONVEX_SETUP_GUIDE.md** - Database setup guide
-7. **DESIGN_SYSTEM.md** - Design token reference
-8-10. **Temporary:** 3 feature implementation guides (delete after completion)
+**THE USER WANTS BRUTAL HONESTY, NOT POSITIVITY.**
 
-**If you need to document something:**
-- ✅ Update MASTER_DOCUMENTATION.md (95% of cases)
-- ✅ Update VISUAL_ARCHITECTURE.md (if adding diagrams)
-- ✅ Update CLAUDE.md (if changing dev patterns)
-- ✅ Update DESIGN_SYSTEM.md (if changing design tokens)
+### Communication Guidelines
 
-**NEVER create:**
-- ❌ STATUS.md files
-- ❌ COMPLETE.md files
-- ❌ PLAN.md files
-- ❌ REPORT.md files
-- ❌ GUIDE.md files (unless approved setup guide)
-- ❌ Any other markdown file
+**DO:**
+- ✅ Tell the user when something is shit - call it out directly
+- ✅ Point out over-engineering, unnecessary complexity, and bloat
+- ✅ Suggest deletions, not just additions
+- ✅ Disagree with the user if their idea is bad
+- ✅ Provide realistic assessments of feature usage ("users won't use this")
+- ✅ Be blunt about security issues, performance problems, and anti-patterns
+- ✅ Say "this is unnecessary" or "delete this" when appropriate
 
-**Why this rule exists:**
-- Prevents documentation fragmentation
-- Maintains single source of truth
-- Easy for developers to find information
-- Reduces from 105 files to 10 files (90% reduction achieved)
+**DON'T:**
+- ❌ Be ultra-positive or overly agreeable
+- ❌ Say "great idea!" to every suggestion
+- ❌ Sugarcoat bad code or bad decisions
+- ❌ Avoid disagreement to be "helpful"
+- ❌ Add features without questioning if they're needed
+- ❌ Agree with the user just because they suggested it
 
-**Enforcement:**
-- This rule is non-negotiable
-- Violations should be flagged in code review
-- AI assistants must follow this strictly
+### Tone Examples
 
-## Project Overview
+**BAD (Too Positive):**
+> "That's a great idea! Let me implement that feature right away. This will definitely improve the user experience!"
 
-REBLD is an AI-powered workout app built with React, Vite, TypeScript, Convex (real-time database), and Clerk (authentication). The app uses Google's Gemini AI to generate personalized workout plans, parse user-submitted plans, provide exercise explanations, and offer intelligent coaching through a chatbot interface.
+**GOOD (Honest):**
+> "That feature is unnecessary complexity. Users won't use it. Here's why: [reasons]. If you still want it, I'll build it, but I recommend against it."
 
-## Build & Development Commands
+**BAD (Avoiding Conflict):**
+> "This approach works, though there might be other ways to do it as well."
 
+**GOOD (Direct):**
+> "This approach is over-engineered. You're using 3 state management systems when Convex already handles state. Delete Jotai and simplify."
+
+### Code Review Standards
+
+When reviewing or implementing code:
+1. **Question everything** - "Do we actually need this?"
+2. **Prioritize deletion over addition** - Less code = better code
+3. **Call out bloat** - Unused services, duplicate logic, unnecessary abstractions
+4. **Flag anti-patterns** - `any` types, prop drilling, god components
+5. **Be realistic** - "This feature sounds cool but users won't use it"
+
+**The user prefers an honest LLM that gives real feedback over a yes-man AI.**
+
+---
+
+## Quick Reference for AI Assistants
+
+### File to Update
+- ✅ **MASTER.md** - Update this after EVERY significant change
+
+### Files That Are Read-Only
+- ❌ CLAUDE.md (this file)
+- ❌ README.md
+- ❌ All other .md files (reference only)
+
+### New .md Files
+- ❌ **NEVER CREATE NEW .md FILES**
+- ✅ Update MASTER.md instead
+
+---
+
+## Project Quick Start
+
+REBLD is an AI-powered workout app for iOS (App Store).
+
+### Tech Stack
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS 4
+- **Backend:** Convex (real-time database)
+- **Auth:** Clerk
+- **AI:** Google Gemini (Pro + Flash)
+- **Mobile:** Capacitor (iOS)
+
+### Development Commands
 ```bash
-# Install dependencies
-npm install
-
-# Development server (runs on port 3000)
-npm run dev
-
-# Production build
-npm build
-
-# Preview production build
-npm preview
-
-# Expose local dev server via tunnel
-npm run tunnel
+npm install              # Install dependencies
+npx convex dev          # Start Convex (keep running)
+npm run dev             # Start dev server
+npm run tunnel          # Expose via tunnel
+npm run build           # Production build
+npx cap sync            # Sync to iOS
+npx cap open ios        # Open in Xcode
 ```
 
-**Important:** Before running the dev server, ensure both Convex and Clerk are configured (see Setup section below).
+### Environment Variables (.env.local)
+```bash
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
+VITE_CONVEX_URL=https://...convex.cloud
+GEMINI_API_KEY=AIza...
+VITE_GEMINI_API_KEY=AIza...
+```
 
-## Initial Setup
+---
 
-### 1. Clerk Authentication
-- Publishable key required in `.env.local` as `VITE_CLERK_PUBLISHABLE_KEY`
-- Get key from: https://dashboard.clerk.com/last-active?path=api-keys
-- See [CLERK_SETUP.md](./CLERK_SETUP.md) for detailed setup
+## Key Development Patterns
 
-### 2. Convex Database
-- Run `npx convex dev` to initialize and link Convex project
-- This auto-generates `VITE_CONVEX_URL` in `.env.local`
-- Keep `npx convex dev` running during development (watches for schema/function changes)
-- Use `npx convex dev --once` for one-time operations or CI/CD
-- Schema changes auto-sync when dev server is running
-- Type definitions regenerate automatically in `convex/_generated/`
-- See [CONVEX_SETUP_GUIDE.md](./CONVEX_SETUP_GUIDE.md) for details
-
-### 3. Gemini API
-- Add `GEMINI_API_KEY` and `VITE_GEMINI_API_KEY` to `.env.local`
-- Used for AI workout plan generation and chatbot
-
-## Architecture Overview
-
-### Frontend Structure
-- **Entry Point:** `index.tsx` wraps app in `ClerkProvider` → `ConvexProvider` → `App`
-- **Main App:** `App.tsx` manages navigation, session state, and page routing
-- **Page Components:** `pages/`
-  - Core: HomePage, PlanPage, ProfilePage, GoalTrackingPage, AuthPage, LogbookPage, DashboardPage
-  - Social: BuddiesPage (buddy connections and activity)
-  - Session: SessionSummaryPage (post-workout achievements and stats)
-- **Shared Components:** `components/` (SessionTracker, Chatbot, ExerciseCard, modals, etc.)
-- **Custom Hooks:** `hooks/` (useWorkoutPlan, useWorkoutLogs, useUserProfile, useTheme)
-- **UI Components:** Tailwind CSS with shadcn/ui component library (`components/ui/`)
-- **Path Alias:** `@/` resolves to project root (configured in `vite.config.ts`)
-
-### State Management
-- **Jotai** for lightweight global state (atoms)
-- **Convex React hooks** for real-time database queries (`useQuery`, `useMutation`)
-- Component-level state for UI interactions
-
-### Database Architecture (Convex)
-
-**Core Tables:**
-- `users` - User profiles, preferences, body metrics, goals, injury profiles, unique permanent `userCode` (REBLD-ABC123 format)
-- `workoutPlans` - Structured workout programs (weeklyPlan + dailyRoutine)
-- `workoutLogs` - Completed workout sessions with exercises and metrics
-- `exerciseHistory` - Last weight/reps used per exercise per user
-- `exerciseCache` - Global exercise explanations (shared across users, includes metadata like tier, movement pattern, sport ratings, injury contraindications)
-
-**Knowledge Base Tables** (for intelligent AI coaching):
-- `programmingKnowledge` - Exercise selection principles from scientific textbooks
-- `exerciseModifications` - Progressions, regressions, alternatives
-- `goalGuidelines` - Goal-specific programming rules
-- `injuryProtocols` - Exercise substitutions and prehab protocols
-- `sexSpecificGuidelines` - Gender-specific programming considerations
-- `sportGuidelines` - Sport-specific movement priorities and top exercises
-- `bodyContextGuidelines` - BMI/body-type-based exercise recommendations
-- `knowledgeCache` - Pre-computed decision trees for token optimization
-
-**Analytics Tables:**
-- `userExercisePreferences` - Per-user exercise ratings and preferences
-- `userExerciseAnalytics` - Volume, PRs, injury incidents
-- `exerciseRelationships` - Progressions, alternatives, movement patterns
-- `sportBuckets` - Sport-specific exercise performance data per sport
-- `exercisePerformance` - Detailed performance tracking per session (RPE, form quality, pain incidents)
-
-**Social Features Tables:**
-- `sharedPlans` - Shared workout plans with unique codes (REBLD-ABC123), 7-day expiration
-- `workoutBuddies` - Buddy relationships (pending/active/declined status)
-- `buddySettings` - Per-buddy notification preferences
-- `buddyNotifications` - Real-time activity feed (workout starts, PRs, buddy requests)
-
-**Gamification Tables:**
-- `achievements` - Unlocked achievements with tiers (bronze/silver/gold/platinum)
-- `streakData` - Current/longest streaks, workout frequency tracking
-
-**Community Tables:**
-- `userSubmittedPlans` - Community plans with AI grading (A-F scale) and analysis
-- `generationLog` - Plan generation analytics for debugging
-
-**Schema Location:** `convex/schema.ts`
-**Type Definitions:** `types.ts` mirrors the Convex schema
-
-### AI Services
-
-**geminiService.ts** - Core AI integration
-- `parseWorkoutPlan()` - Converts text/markdown workout plans into structured JSON
-- `generateWorkoutPlan()` - Creates personalized plans from user preferences
-- `explainExercise()` - Generates exercise explanations with form cues
-- `handleChatMessage()` - Chatbot with function calling for plan modifications
-
-**Advanced Parsing Features:**
-- Handles abbreviations (EMOM, AMRAP, RPE, 1RM, etc.) via `workoutAbbreviations.ts`
-- Recognizes workout formats: supersets (A1/A2), giant sets, AMRAPs, ladders, clusters
-- Block-based architecture: `single`, `superset`, `amrap` blocks
-- Metric templates: sets/reps/weight, tempo, duration, distance, etc.
-
-**Knowledge & Exercise Services:**
-- `knowledgeService.ts` - Queries programming knowledge from database
-- `knowledgeCompressor.ts` - Creates compressed decision trees for token efficiency
-- `flashContextService.ts` - Builds minimal context for AI calls (cost optimization)
-- `exerciseDatabaseService.ts` - Manages exercise cache CRUD
-- `smartExerciseSelection.ts` - Intelligent exercise ranking based on goals/injuries
-- `exerciseRanker.ts` - Scores exercises using multi-factor algorithm
-
-### Block-Based Workout Structure
-
-Workouts are organized into **blocks** rather than flat exercise lists:
-
+### Backend Mutations (Use Utilities)
 ```typescript
-type WorkoutBlock = SingleExerciseBlock | SupersetBlock | AmrapBlock
+import { withMetrics } from "./utils/performanceMetrics";
+import { handleError, validateRequired } from "./utils/errorHandling";
+import { loggers } from "./utils/logger";
+import { executeWithRollback } from "./utils/transactionHelpers";
 
-// Single exercise (standard sets × reps)
-{ type: 'single', exercises: [...] }
+export const myMutation = mutation({
+  handler: async (ctx, args) => {
+    return await withMetrics("myMutation", async () => {
+      try {
+        validateRequired(args, ["userId"], "myMutation");
 
-// Superset (A1/A2 alternating)
-{ type: 'superset', rounds: 4, exercises: [...] }
-
-// AMRAP (as many rounds as possible)
-{ type: 'amrap', duration_minutes: 10, exercises: [...] }
+        return await executeWithRollback(ctx.db, async (tracker) => {
+          const id = await ctx.db.insert("table", {...});
+          tracker.trackInsert("table", id);
+          return id;
+        });
+      } catch (error) {
+        loggers.mutations.error("Failed:", error);
+        handleError(error, "myMutation");
+      }
+    });
+  },
+});
 ```
 
-Each block contains `PlanExercise[]` with:
-- `exercise_name` (string)
-- `metrics_template` (flexible metric type: SetsRepsWeight, SetsDuration, etc.)
-- `category` ('warmup' | 'main' | 'cooldown')
-- `notes`, `rpe`, etc.
-
-### Key Patterns
-
-**Convex Data Flow:**
-1. React component uses `useQuery(api.queries.getWorkoutPlans, { userId })`
-2. Convex returns real-time data from cloud
-3. Component re-renders automatically when data changes
-4. Mutations via `useMutation(api.mutations.createWorkoutPlan)`
-
-**Plan Normalization:**
-- When saving plans to Convex, use `normalizePlanForConvex()` in `useWorkoutPlan.ts`
-- Ensures all fields match Convex validators (null vs undefined, proper types)
-- Critical: `metrics_template` can be `v.any()` for flexibility
-
-**Exercise Caching:**
-- First time an exercise is explained, save to `exerciseCache` table
-- Future requests check cache first (reduces API calls)
-- Cache includes: explanation, muscles_worked, form_cue, common_mistake, metadata
-
-**Session Tracking:**
-- `SessionTracker` component handles live workout sessions
-- Collects logged sets/reps/weight per exercise
-- On finish, saves to `workoutLogs` and updates `exerciseHistory`
-
-### Internationalization (i18n)
-
-- **Setup:** `i18n/config.ts` initializes i18next with browser language detection
-- **Translations:** `i18n/locales/en.json`, `i18n/locales/de.json`
-- **Usage:** `const { t } = useTranslation();` then `t('key.path')`
-- **Language switching:** `LanguageSwitcher` component in `components/`
-
-### Theming
-
-- **CSS Variables:** `styles/theme.css` defines light/dark mode vars
-- **Hook:** `useTheme()` provides `theme` and `toggleTheme()`
-- **Implementation:** Toggles `data-theme="dark"` attribute on `<html>`
-
-### Social Features (Buddy System)
-
-**Plan Sharing:**
-- Users can share plans via unique codes (format: "REBLD-ABC123")
-- `SharePlanDialog` and `EnterCodeDialog` components handle sharing flow
-- Plans expire 7 days after creation
-- Track who accepted shared plans via `acceptedBy` array in `sharedPlans` table
-
-**Buddy System:**
-- Each user gets permanent `userCode` assigned on profile creation (generated via `userCodeMutations.ts`)
-- Buddies can compare stats, share workout logs, see PRs
-- `BuddiesPage` displays buddy connections and activity
-- Notifications for workout starts, PRs, and buddy requests
-- Related components: `BuddyComparisonCard`, `BuddyWorkoutLog`
-
-**Convex Queries/Mutations:**
-- `buddyQueries.ts` - Get shared plans, workout buddies
-- `buddyMutations.ts` - Create/accept buddy relationships, manage notifications
-
-### Achievements & Streak System
-
-**Streak Tracking:**
-- `streakData` table tracks current/longest streaks per user
-- Streaks remain active within 48 hours of last workout
-- `StreakCounter` component displays real-time streak status
-- Premium users get streak freezes (1/month)
-- `weeklyWorkouts` array tracks Mon-Sun activity for heatmap visualization
-
-**Achievements:**
-- `achievements` table stores unlocked achievements
-- Types: streak milestones (`streak_7`), workout count (`workouts_100`), volume, PRs
-- Tiers: bronze, silver, gold, platinum
-- `AchievementBadge` component displays unlocked achievements
-- `VictoryScreen` shows newly unlocked achievements after workout completion
-
-**HeatMap Calendar:**
-- `HeatMapCalendar` component visualizes workout frequency over time
-- Uses `streakData.weeklyWorkouts` and `workoutLogs` for activity data
-
-### AI Plan Analysis & Grading
-
-**User Submitted Plans:**
-- Users can submit plans for AI analysis via `PlanImporter`
-- AI grades plans A-F based on multi-factor scoring:
-  - Balance (0-100): Exercise variety and muscle group coverage
-  - Progression: Logical loading and periodization
-  - Recovery: Adequate rest days and deload weeks
-  - Specificity: Alignment with stated goals
-- Returns strengths, weaknesses, and improvement suggestions
-- Graded plans stored in `userSubmittedPlans` table
-- Public plans can be browsed/copied by other users (community feature)
-
-### Cost Optimization
-
-The app includes several token-optimization strategies to reduce AI API costs:
-
-- **Flash Context Service** (`flashContextService.ts`) - Builds minimal context for AI calls
-- **Knowledge Compressor** (`knowledgeCompressor.ts`) - Pre-computes decision trees from knowledge base
-- **Knowledge Cache** (`knowledgeCache` table) - Stores compressed guidelines by user profile
-  - Cache keys format: `"goal_experience_constraints"` (e.g., "aesthetic_intermediate_knee_pain")
-  - Contains: tier lists, avoid exercises, substitutions, programming rules
-- **Validation:** `validateCostOptimization.ts` script checks token usage
-- **Guideline Bullets:** Sex/sport/body/injury guidelines compressed into bullet arrays
-
-### Auxiliary Routines
-
-**Daily Routines:**
-- Optional `dailyRoutine` field in workout plans
-- Stores mobility work, stretching, or daily habits separate from weekly plan
-- Uses simple exercise array (not block-based architecture yet)
-- Displayed via `AuxiliaryRoutineDisplay` component
-
-## Working with Workout Plans
-
-### Plan Structure
+### Logging (Production-Safe)
 ```typescript
-WorkoutPlan {
-  name: string;
-  weeklyPlan: PlanDay[];      // 7 days (day_of_week: 1-7)
-  dailyRoutine?: DailyRoutine; // Optional daily habits
-  createdAt: string;
-}
+import { loggers } from "./utils/logger";
 
-PlanDay {
-  day_of_week: number;         // 1=Mon, 7=Sun
-  focus: string;               // "Upper Body", "Legs", etc.
-  blocks: WorkoutBlock[];      // Array of exercise blocks
-  notes?: string;
-}
+// Development only (hidden in production)
+loggers.ai.debug("Details:", data);
+loggers.mutations.info("Success:", id);
+
+// Always logged
+loggers.ai.warn("Slow operation:", ms);
+loggers.mutations.error("Failed:", error);
 ```
 
-### Parsing User-Submitted Plans
-1. User pastes text/markdown into `PlanImporter` (onboarding component)
-2. `geminiService.parseWorkoutPlan()` sends to Gemini with structured prompt
-3. AI returns JSON matching `WorkoutPlan` type
-4. `normalizePlanForConvex()` cleans data
-5. `createWorkoutPlan` mutation saves to Convex
+### Query Caching
+```typescript
+import { withCache, exerciseQueryCache } from "./utils/queryCache";
 
-### Generating AI Plans
-1. User fills onboarding form (goals, experience, pain points, sport)
-2. `geminiService.generateWorkoutPlan()` creates plan from preferences
-3. Optionally uses `knowledgeService` to inject programming principles
-4. Returns structured `WorkoutPlan` ready for Convex
+export const getExercise = query({
+  handler: async (ctx, args) => {
+    return await withCache(
+      exerciseQueryCache,
+      `exercise:${args.name}`,
+      async () => ctx.db.query("exerciseCache")...
+    );
+  },
+});
+```
 
-## Scripts Directory
+---
 
-The `scripts/` directory contains data population and testing utilities:
+## Documentation Rules Summary
 
-**Exercise Database Population:**
-- `populateExerciseDatabase.ts` - Main script for populating exercise cache
-- `uploadKnowledge.ts` - Upload programming knowledge from scientific books
-- `uploadScientificData.ts` - Upload evidence-based exercise data
-- `uploadInjuryData*.ts` - Various injury protocol upload scripts
-- `enhanceExistingExercises.ts` - Add metadata to existing exercises
+1. ✅ **UPDATE MASTER.md** after every significant change
+2. ❌ **NEVER CREATE** new .md files
+3. ❌ **NEVER UPDATE** read-only reference files (unless instructed)
+4. 📝 **ADD TO PENDING TASKS** if work is incomplete
+5. 📅 **ADD TO RECENT CHANGES** with date and details
 
-**Testing & Validation:**
-- `testParsing.ts` - Test workout plan parsing
-- `testSupersetFix.ts` - Validate superset parsing
-- `validateCostOptimization.ts` - Check token usage optimization
+---
 
-**Note:** These scripts are for database setup/migration. Most use Convex mutations and require proper auth setup.
-
-## Troubleshooting
-
-### Convex Connection Issues
-- Ensure `npx convex dev` is running in background
-- Check `.env.local` has `VITE_CONVEX_URL`
-- Verify Convex deployment URL in dashboard matches env var
-
-### Clerk Authentication Errors
-- Verify `VITE_CLERK_PUBLISHABLE_KEY` is correct
-- Check Clerk dashboard for app status
-- Ensure Vite env vars use `VITE_` prefix
-
-### Gemini API Failures
-- Check API key is valid and has quota
-- `geminiService.ts` has fallback logic for missing keys
-- Error messages in console will indicate API issues
-
-### Type Errors in Convex Mutations
-- Run `npx convex dev` to regenerate types
-- Check `convex/_generated/` for latest type definitions
-- Ensure data matches schema validators in `convex/schema.ts`
-
-## Code Style Notes
-
-- **File Organization:** Components use PascalCase, utilities use camelCase
-- **Type Safety:** Prefer interfaces from `types.ts` over inline types
-- **Convex IDs:** Use `Id<"tableName">` from generated types
-- **Null Handling:** Convex schema uses explicit `v.union(v.string(), v.null())`
-- **Async Operations:** Use async/await, handle errors with try/catch
-- **Component Structure:** Functional components with hooks, avoid class components
+**For complete documentation, see MASTER.md (the single source of truth)**

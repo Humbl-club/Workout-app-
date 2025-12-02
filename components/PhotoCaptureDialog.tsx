@@ -1,11 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { useMutation, useQuery } from 'convex/react';
+import { useMutation, useQuery, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Card, CardHeader, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { XMarkIcon, UploadIcon, SparklesIcon } from './icons';
 import { notify } from './layout/Toast';
-import { analyzePairedPhotos, compressImage } from '../services/photoAnalysisService';
+import { compressBodyPhoto } from '../lib/imageOptimization';
 import { useTranslation } from 'react-i18next';
 
 // Camera icon component
@@ -45,6 +45,7 @@ export default function PhotoCaptureDialog({
 
   const uploadPhotoMutation = useMutation(api.photoMutations.uploadProgressPhoto);
   const userPhotos = useQuery(api.photoQueries.getUserProgressPhotos, { userId, limit: 5 });
+  const analyzePairedPhotosAction = useAction(api.ai.analyzePairedBodyPhotos);
 
   // Check if user uploaded photos within last 14 days
   const canUploadPhotos = () => {
@@ -122,21 +123,12 @@ export default function PhotoCaptureDialog({
     setIsAnalyzing(true);
 
     try {
-      // Compress images
-      const compressedFront = await compressImage(
-        await fetch(frontPhoto).then(r => r.blob()).then(b => new File([b], 'front.jpg', { type: 'image/jpeg' })),
-        1200,
-        0.85
-      );
-      const compressedBack = await compressImage(
-        await fetch(backPhoto).then(r => r.blob()).then(b => new File([b], 'back.jpg', { type: 'image/jpeg' })),
-        1200,
-        0.85
-      );
+      // Compress images using new optimization service
+      const frontFile = await fetch(frontPhoto).then(r => r.blob()).then(b => new File([b], 'front.jpg', { type: 'image/jpeg' }));
+      const backFile = await fetch(backPhoto).then(r => r.blob()).then(b => new File([b], 'back.jpg', { type: 'image/jpeg' }));
 
-      // Extract base64 data
-      const frontBase64 = compressedFront.split(',')[1];
-      const backBase64 = compressedBack.split(',')[1];
+      const frontBase64 = await compressBodyPhoto(frontFile);
+      const backBase64 = await compressBodyPhoto(backFile);
 
       // Get previous photos for comparison
       const previousFront = userPhotos?.find(p => p.photoType === 'front');
@@ -145,18 +137,20 @@ export default function PhotoCaptureDialog({
       const previousFrontBase64 = previousFront?.photoUrl ? previousFront.photoUrl.split(',')[1] : undefined;
       const previousBackBase64 = previousBack?.photoUrl ? previousBack.photoUrl.split(',')[1] : undefined;
 
-      // Analyze paired photos with AI
-      const analysis = await analyzePairedPhotos(
-        frontBase64,
-        backBase64,
+      // Analyze paired photos with AI (using secure backend)
+      const analysis = await analyzePairedPhotosAction({
+        frontImageBase64: frontBase64,
+        backImageBase64: backBase64,
         previousFrontBase64,
-        previousBackBase64
-      );
+        previousBackBase64,
+        userId,
+        language: t('common.language', { defaultValue: 'English' }),
+      });
 
       // Upload front photo
       await uploadPhotoMutation({
         userId,
-        photoUrl: compressedFront,
+        photoUrl: `data:image/jpeg;base64,${frontBase64}`,
         photoType: 'front',
         analysis: {
           bodyFatEstimate: analysis.bodyFatEstimate,
@@ -170,7 +164,7 @@ export default function PhotoCaptureDialog({
       // Upload back photo with same analysis
       await uploadPhotoMutation({
         userId,
-        photoUrl: compressedBack,
+        photoUrl: `data:image/jpeg;base64,${backBase64}`,
         photoType: 'back',
         analysis: {
           bodyFatEstimate: analysis.bodyFatEstimate,

@@ -7,6 +7,7 @@ export default defineSchema({
   users: defineTable({
     userId: v.string(), // Same as auth token subject
     userCode: v.optional(v.string()), // Unique permanent code for buddy connections (REBLD-ABC123)
+    role: v.optional(v.union(v.literal("user"), v.literal("admin"))), // User role for access control
     activePlanId: v.union(v.id("workoutPlans"), v.null()),
     lastProgressionApplied: v.union(v.string(), v.null()), // ISO date string
     bodyMetrics: v.union(
@@ -59,18 +60,58 @@ export default defineSchema({
         sport_specific: v.union(v.string(), v.null()), // Elite sport-specific protocols  
         additional_notes: v.union(v.string(), v.null()), // Free-form notes
         last_updated: v.string(), // ISO date string
-        // Expanded profile
-        sex: v.union(v.literal("male"), v.literal("female"), v.literal("other"), v.null()),
-        equipment: v.union(v.literal("minimal"), v.literal("home_gym"), v.literal("commercial_gym"), v.null()),
-        preferred_session_length: v.union(v.literal("30"), v.literal("45"), v.literal("60"), v.literal("75"), v.null()),
-        athletic_level: v.union(v.literal("low"), v.literal("moderate"), v.literal("high"), v.null()),
-        training_age_years: v.union(v.number(), v.null()),
-        body_type: v.union(v.literal("lean"), v.literal("average"), v.literal("muscular"), v.null()),
+        // Expanded profile (all optional - not collected in basic onboarding)
+        sex: v.optional(v.union(v.literal("male"), v.literal("female"), v.literal("other"), v.null())),
+        equipment: v.optional(v.union(v.literal("minimal"), v.literal("home_gym"), v.literal("commercial_gym"), v.null())),
+        // Note: "90", "120", "150+" are legacy values from old onboarding - UI now only shows 30/45/60/75
+        preferred_session_length: v.optional(v.union(v.literal("30"), v.literal("45"), v.literal("60"), v.literal("75"), v.literal("90"), v.literal("120"), v.literal("150+"), v.null())),
+        athletic_level: v.optional(v.union(v.literal("low"), v.literal("moderate"), v.literal("high"), v.null())),
+        training_age_years: v.optional(v.union(v.number(), v.null())),
+        body_type: v.optional(v.union(v.literal("lean"), v.literal("average"), v.literal("muscular"), v.null())),
         comfort_flags: v.optional(v.array(v.string())),
+        // NEW: Training split for 1x/2x daily
+        training_split: v.optional(v.object({
+          sessions_per_day: v.union(v.literal("1"), v.literal("2")),
+          training_type: v.union(
+            v.literal("strength_only"),
+            v.literal("strength_plus_cardio"),
+            v.literal("combined"),
+            v.literal("cardio_focused")
+          ),
+          // Cardio preferences (shown when training_type includes cardio)
+          cardio_preferences: v.optional(v.object({
+            preferred_types: v.array(v.string()), // ["running", "cycling", "rowing", "swimming", "elliptical", "stair_climber"]
+            favorite_exercise: v.optional(v.string()), // Primary cardio choice
+            cardio_duration_minutes: v.optional(v.number()), // Default cardio session length
+            outdoor_preferred: v.optional(v.boolean()), // Prefers outdoor activities
+          })),
+        })),
+        // NEW: Specific goal with target date (e.g., Hyrox April 2025)
+        specific_goal: v.optional(v.object({
+          event_type: v.union(v.string(), v.null()), // "hyrox", "marathon", "powerlifting_meet"
+          event_name: v.union(v.string(), v.null()), // "Hyrox Hamburg"
+          target_date: v.union(v.string(), v.null()), // ISO date
+          current_readiness: v.union(v.number(), v.null()), // 1-10 scale
+          description: v.union(v.string(), v.null()), // Free-form goal description
+        })),
       }),
       v.null()
     )),
-    
+
+    // NEW: Supplement tracking
+    supplements: v.optional(v.array(v.object({
+      name: v.string(),
+      timing: v.union(
+        v.literal("morning"),
+        v.literal("pre_workout"),
+        v.literal("post_workout"),
+        v.literal("evening"),
+        v.literal("with_meals")
+      ),
+      dosage: v.union(v.string(), v.null()),
+      active: v.boolean(),
+    }))),
+
     // NEW: Injury profile for personalized exercise selection
     injuryProfile: v.optional(v.object({
       current_injuries: v.array(v.object({
@@ -101,6 +142,37 @@ export default defineSchema({
       periodEnd: v.string(), // ISO date
       lastReset: v.union(v.string(), v.null())
     })),
+
+    // Onboarding state tracking
+    onboardingCompleted: v.optional(v.boolean()),
+    onboardingCompletedAt: v.optional(v.string()), // ISO date string
+
+    // Location & Device Data (privacy-first: country/region only, no precise location)
+    locationData: v.optional(v.object({
+      country: v.union(v.string(), v.null()), // "United States", "Germany", etc.
+      countryCode: v.union(v.string(), v.null()), // "US", "DE", etc.
+      region: v.union(v.string(), v.null()), // "California", "Bavaria", etc.
+      city: v.union(v.string(), v.null()), // "San Francisco", "Munich", etc.
+      timezone: v.union(v.string(), v.null()), // "America/Los_Angeles", "Europe/Berlin"
+      ip: v.union(v.string(), v.null()), // Stored for security (hashed recommended)
+      firstSeen: v.string(), // ISO date - when user first logged in
+      lastSeen: v.string(), // ISO date - last login time
+      lastUpdated: v.string(), // ISO date
+    })),
+
+    // Device & Platform Data
+    deviceData: v.optional(v.object({
+      deviceType: v.union(v.literal("mobile"), v.literal("tablet"), v.literal("desktop"), v.null()),
+      os: v.union(v.string(), v.null()), // "iOS", "Android", "Windows", "macOS"
+      osVersion: v.union(v.string(), v.null()),
+      browser: v.union(v.string(), v.null()), // "Safari", "Chrome", "Firefox"
+      browserVersion: v.union(v.string(), v.null()),
+      appVersion: v.union(v.string(), v.null()), // App version number
+      screenWidth: v.union(v.number(), v.null()),
+      screenHeight: v.union(v.number(), v.null()),
+      language: v.union(v.string(), v.null()), // "en-US", "de-DE"
+      lastUpdated: v.string(), // ISO date
+    })),
   })
     .index("by_userId", ["userId"])
     .index("by_userCode", ["userCode"])
@@ -110,12 +182,28 @@ export default defineSchema({
   workoutPlans: defineTable({
     userId: v.string(),
     name: v.string(),
+    // NEW: Periodization metadata for goal-based training
+    periodization: v.optional(v.object({
+      total_weeks: v.number(),
+      current_week: v.number(),
+      phase: v.union(
+        v.literal("base"),
+        v.literal("build"),
+        v.literal("peak"),
+        v.literal("taper"),
+        v.literal("recovery")
+      ),
+      phase_description: v.optional(v.string()),
+      weeks_in_phase: v.optional(v.number()),
+      phase_end_week: v.optional(v.number()),
+    })),
     weeklyPlan: v.array(
       v.object({
         day_of_week: v.number(),
         focus: v.string(),
         notes: v.union(v.string(), v.null()),
-        blocks: v.array(
+        // Standard single-session structure (blocks directly on day)
+        blocks: v.optional(v.array(
           v.union(
             // Single exercise block
             v.object({
@@ -127,7 +215,7 @@ export default defineSchema({
                   notes: v.union(v.string(), v.null()),
                   metrics_template: v.any(), // Flexible for different metric types
                   original_exercise_name: v.union(v.string(), v.null()),
-                  rpe: v.union(v.string(), v.null()),
+                  rpe: v.union(v.string(), v.number(), v.null()),
                   category: v.union(
                     v.literal("warmup"),
                     v.literal("main"),
@@ -147,7 +235,7 @@ export default defineSchema({
                   notes: v.union(v.string(), v.null()),
                   metrics_template: v.any(),
                   original_exercise_name: v.union(v.string(), v.null()),
-                  rpe: v.union(v.string(), v.null()),
+                  rpe: v.union(v.string(), v.number(), v.null()),
                   category: v.union(
                     v.literal("warmup"),
                     v.literal("main"),
@@ -167,7 +255,28 @@ export default defineSchema({
                   notes: v.union(v.string(), v.null()),
                   metrics_template: v.any(),
                   original_exercise_name: v.union(v.string(), v.null()),
-                  rpe: v.union(v.string(), v.null()),
+                  rpe: v.union(v.string(), v.number(), v.null()),
+                  category: v.union(
+                    v.literal("warmup"),
+                    v.literal("main"),
+                    v.literal("cooldown")
+                  ),
+                })
+              ),
+            }),
+            // Circuit block (rounds-based or time-based circuit training)
+            v.object({
+              type: v.literal("circuit"),
+              title: v.union(v.string(), v.null()),
+              rounds: v.optional(v.number()),
+              duration_minutes: v.optional(v.number()),
+              exercises: v.array(
+                v.object({
+                  exercise_name: v.string(),
+                  notes: v.union(v.string(), v.null()),
+                  metrics_template: v.any(),
+                  original_exercise_name: v.union(v.string(), v.null()),
+                  rpe: v.union(v.string(), v.number(), v.null()),
                   category: v.union(
                     v.literal("warmup"),
                     v.literal("main"),
@@ -177,7 +286,99 @@ export default defineSchema({
               ),
             })
           )
-        ),
+        )),
+        // NEW: 2x/day session structure (sessions array instead of blocks)
+        sessions: v.optional(v.array(
+          v.object({
+            session_name: v.union(v.string(), v.null()), // e.g., "AM Cardio", "PM Strength"
+            time_of_day: v.union(v.literal("morning"), v.literal("evening"), v.literal("all-day"), v.null()),
+            estimated_duration: v.optional(v.union(v.number(), v.null())), // minutes
+            blocks: v.array(
+              v.union(
+                // Single exercise block
+                v.object({
+                  type: v.literal("single"),
+                  title: v.union(v.string(), v.null()),
+                  exercises: v.array(
+                    v.object({
+                      exercise_name: v.string(),
+                      notes: v.union(v.string(), v.null()),
+                      metrics_template: v.any(),
+                      original_exercise_name: v.union(v.string(), v.null()),
+                      rpe: v.union(v.string(), v.number(), v.null()),
+                      category: v.union(
+                        v.literal("warmup"),
+                        v.literal("main"),
+                        v.literal("cooldown")
+                      ),
+                    })
+                  ),
+                }),
+                // Superset block
+                v.object({
+                  type: v.literal("superset"),
+                  title: v.union(v.string(), v.null()),
+                  rounds: v.number(),
+                  exercises: v.array(
+                    v.object({
+                      exercise_name: v.string(),
+                      notes: v.union(v.string(), v.null()),
+                      metrics_template: v.any(),
+                      original_exercise_name: v.union(v.string(), v.null()),
+                      rpe: v.union(v.string(), v.number(), v.null()),
+                      category: v.union(
+                        v.literal("warmup"),
+                        v.literal("main"),
+                        v.literal("cooldown")
+                      ),
+                    })
+                  ),
+                }),
+                // AMRAP block
+                v.object({
+                  type: v.literal("amrap"),
+                  title: v.union(v.string(), v.null()),
+                  duration_minutes: v.number(),
+                  exercises: v.array(
+                    v.object({
+                      exercise_name: v.string(),
+                      notes: v.union(v.string(), v.null()),
+                      metrics_template: v.any(),
+                      original_exercise_name: v.union(v.string(), v.null()),
+                      rpe: v.union(v.string(), v.number(), v.null()),
+                      category: v.union(
+                        v.literal("warmup"),
+                        v.literal("main"),
+                        v.literal("cooldown")
+                      ),
+                    })
+                  ),
+                }),
+                // Circuit block (rounds-based or time-based circuit training)
+                v.object({
+                  type: v.literal("circuit"),
+                  title: v.union(v.string(), v.null()),
+                  rounds: v.optional(v.number()),
+                  duration_minutes: v.optional(v.number()),
+                  exercises: v.array(
+                    v.object({
+                      exercise_name: v.string(),
+                      notes: v.union(v.string(), v.null()),
+                      metrics_template: v.any(),
+                      original_exercise_name: v.union(v.string(), v.null()),
+                      rpe: v.union(v.string(), v.number(), v.null()),
+                      category: v.union(
+                        v.literal("warmup"),
+                        v.literal("main"),
+                        v.literal("cooldown")
+                      ),
+                    })
+                  ),
+                })
+              )
+            ),
+          })
+        )),
       })
     ),
     dailyRoutine: v.union(
@@ -190,7 +391,7 @@ export default defineSchema({
             notes: v.union(v.string(), v.null()),
             metrics_template: v.any(),
             original_exercise_name: v.union(v.string(), v.null()),
-            rpe: v.union(v.string(), v.null()),
+            rpe: v.union(v.string(), v.number(), v.null()),
             category: v.union(
               v.literal("warmup"),
               v.literal("main"),
@@ -238,7 +439,8 @@ export default defineSchema({
     durationMinutes: v.union(v.number(), v.null()),
   })
     .index("by_userId", ["userId"])
-    .index("by_userId_date", ["userId", "date"]),
+    .index("by_userId_date", ["userId", "date"])
+    .index("by_date", ["date"]), // For finding recent workouts across all users
 
   // Exercise history - last weight/reps used per exercise per user
   exerciseHistory: defineTable({
@@ -259,16 +461,46 @@ export default defineSchema({
     muscles_worked: v.union(v.array(v.string()), v.null()),
     form_cue: v.union(v.string(), v.null()),
     common_mistake: v.union(v.string(), v.null()),
+    // Step-by-step instructions for performing the exercise
+    step_by_step: v.optional(v.array(v.string())),
     // German translations (optional for backward compatibility)
     explanation_de: v.optional(v.string()),
     muscles_worked_de: v.optional(v.array(v.string())),
     form_cue_de: v.optional(v.string()),
     common_mistake_de: v.optional(v.string()),
+    // NEW: German display name for localized UI
+    display_name_de: v.optional(v.string()), // e.g., "Bankdrücken" for "Bench Press"
     generated_at: v.string(), // ISO date string
     hit_count: v.number(),
     last_accessed: v.string(), // ISO date string
-    source: v.union(v.literal("gemini_ultra"), v.literal("gemini_api"), v.literal("scientific_textbooks"), v.literal("generated_data")),
-    // NEW: Enhanced fields for exercise classification and value (all optional for backward compatibility)
+    source: v.union(v.literal("gemini_ultra"), v.literal("gemini_api"), v.literal("scientific_textbooks"), v.literal("generated_data"), v.literal("manual_entry")),
+    // NEW: Exercise role classification (core vs accessory vs complementary)
+    exercise_role: v.optional(v.union(
+      v.literal("core"),           // Bench, Squat, Deadlift, Row, OHP - fundamental compounds
+      v.literal("accessory"),      // DB Flies, Leg Curl, Tricep Extensions - support lifts
+      v.literal("complementary"),  // Sled Push, Farmer Carry - sport-specific additions
+      v.literal("isolation"),      // Bicep Curl, Lateral Raise - single muscle finishers
+      v.literal("cardio"),         // Running, Cycling, SkiErg - cardiovascular
+      v.literal("mobility")        // Stretches, Foam Rolling - movement prep/recovery
+    )),
+    // NEW: Default metrics for this exercise (especially useful for cardio)
+    default_metrics: v.optional(v.object({
+      type: v.union(
+        v.literal("sets_reps_weight"),
+        v.literal("duration_only"),
+        v.literal("distance_time"),
+        v.literal("sets_distance_rest"),
+        v.literal("sets_duration")
+      ),
+      // Optional default values
+      sets: v.optional(v.number()),
+      reps: v.optional(v.number()),
+      duration_minutes: v.optional(v.number()),
+      distance_m: v.optional(v.number()),
+      distance_km: v.optional(v.number()),
+      rest_s: v.optional(v.number()),
+    })),
+    // Enhanced fields for exercise classification and value (all optional for backward compatibility)
     primary_category: v.optional(v.union(
       v.literal("warmup"),
       v.literal("main"),
@@ -352,13 +584,16 @@ export default defineSchema({
       soccer: v.union(v.number(), v.null()),
       tennis: v.union(v.number(), v.null()),
       running: v.union(v.number(), v.null()),
+      marathon: v.optional(v.union(v.number(), v.null())),     // NEW: Marathon-specific rating (optional for backward compat)
+      triathlon: v.optional(v.union(v.number(), v.null())),    // NEW: Triathlon-specific rating (optional for backward compat)
       swimming: v.union(v.number(), v.null()),
       cycling: v.union(v.number(), v.null()),
       general_fitness: v.union(v.number(), v.null()),
     })),
   }).index("by_exerciseName", ["exercise_name"])
     .index("by_tier", ["exercise_tier"])
-    .index("by_category", ["primary_category"]),
+    .index("by_category", ["primary_category"])
+    .index("by_hit_count", ["hit_count"]), // For finding popular exercises
 
   // Programming knowledge from books - teaches AI HOW to select exercises
   programmingKnowledge: defineTable({
@@ -708,7 +943,8 @@ export default defineSchema({
     tier: v.union(v.literal("bronze"), v.literal("silver"), v.literal("gold"), v.literal("platinum"))
   }).index("by_userId", ["userId"])
     .index("by_type", ["type"])
-    .index("by_userId_type", ["userId", "type"]),
+    .index("by_userId_type", ["userId", "type"])
+    .index("by_userId_unlockedAt", ["userId", "unlockedAt"]), // For chronological achievement display
 
   streakData: defineTable({
     userId: v.string(),
@@ -769,4 +1005,90 @@ export default defineSchema({
     createdAt: v.string()
   }).index("by_userId", ["userId"])
     .index("by_userId_date", ["userId", "date"]),
+
+  // Health Metrics History - Track body metrics, vitals, and health data over time
+  healthMetrics: defineTable({
+    userId: v.string(),
+    date: v.string(), // ISO date string (day only, no time)
+
+    // Body metrics
+    weight: v.union(v.number(), v.null()), // in kg
+    bodyFat: v.union(v.number(), v.null()), // percentage
+    muscleMass: v.union(v.number(), v.null()), // in kg
+
+    // Measurements (in cm)
+    chest: v.union(v.number(), v.null()),
+    waist: v.union(v.number(), v.null()),
+    hips: v.union(v.number(), v.null()),
+    biceps: v.union(v.number(), v.null()),
+    thighs: v.union(v.number(), v.null()),
+    calves: v.union(v.number(), v.null()),
+    shoulders: v.union(v.number(), v.null()),
+    neck: v.union(v.number(), v.null()),
+
+    // Vital signs
+    restingHeartRate: v.union(v.number(), v.null()), // bpm
+    bloodPressureSystolic: v.union(v.number(), v.null()), // mmHg
+    bloodPressureDiastolic: v.union(v.number(), v.null()), // mmHg
+
+    // Activity & Recovery
+    sleepHours: v.union(v.number(), v.null()),
+    sleepQuality: v.union(v.number(), v.null()), // 1-10 scale
+    stepsToday: v.union(v.number(), v.null()),
+    activeMinutes: v.union(v.number(), v.null()),
+
+    // Nutrition (daily totals)
+    caloriesConsumed: v.union(v.number(), v.null()),
+    proteinGrams: v.union(v.number(), v.null()),
+    carbsGrams: v.union(v.number(), v.null()),
+    fatGrams: v.union(v.number(), v.null()),
+    waterLiters: v.union(v.number(), v.null()),
+
+    // Subjective ratings (1-10 scale)
+    energyLevel: v.union(v.number(), v.null()),
+    moodRating: v.union(v.number(), v.null()),
+    stressLevel: v.union(v.number(), v.null()),
+    sorenessLevel: v.union(v.number(), v.null()),
+
+    // Notes
+    notes: v.union(v.string(), v.null()),
+
+    createdAt: v.string(), // ISO timestamp
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_date", ["userId", "date"])
+    .index("by_date", ["date"]),
+
+  // Event Tracking - Analytics and user behavior tracking
+  events: defineTable({
+    userId: v.string(),
+    eventType: v.string(), // "plan_generated", "workout_started", "exercise_substituted", etc.
+    eventData: v.any(), // Flexible event-specific data
+    timestamp: v.string(), // ISO date string
+    sessionId: v.optional(v.string()), // Group related events
+    metadata: v.optional(v.object({
+      // Common metadata fields
+      userAgent: v.optional(v.string()),
+      platform: v.optional(v.string()),
+      appVersion: v.optional(v.string()),
+      locale: v.optional(v.string()),
+      // Performance metrics
+      duration_ms: v.optional(v.number()),
+      success: v.optional(v.boolean()),
+      error: v.optional(v.string()),
+      // A/B testing
+      abTest: v.optional(v.string()),
+      abVariant: v.optional(v.string()),
+    })),
+    createdAt: v.number(), // Unix timestamp for efficient sorting
+  })
+    .index("by_userId", ["userId"])
+    .index("by_eventType", ["eventType"])
+    .index("by_userId_eventType", ["userId", "eventType"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_createdAt", ["createdAt"])
+    .index("by_sessionId", ["sessionId"])
+    .index("by_userId_createdAt", ["userId", "createdAt"])  // NEW: For user activity over time
+    .index("by_eventType_createdAt", ["eventType", "createdAt"])  // NEW: For event trends
+    .index("by_userId_timestamp", ["userId", "timestamp"]),  // NEW: For time-based user queries
 });

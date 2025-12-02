@@ -1,4 +1,59 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
+
+/**
+ * Standalone haptic trigger function for use outside React hooks
+ * Use this for event handlers, callbacks, and non-hook contexts
+ */
+export const triggerHaptic = async (
+  type: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' = 'medium'
+) => {
+  const isCapacitor = typeof (window as any).Capacitor !== 'undefined';
+
+  const vibrate = (pattern: number | number[]) => {
+    if ('vibrate' in navigator) {
+      navigator.vibrate(pattern);
+    }
+  };
+
+  try {
+    if (isCapacitor) {
+      switch (type) {
+        case 'light':
+          await Haptics.impact({ style: ImpactStyle.Light });
+          break;
+        case 'medium':
+          await Haptics.impact({ style: ImpactStyle.Medium });
+          break;
+        case 'heavy':
+          await Haptics.impact({ style: ImpactStyle.Heavy });
+          break;
+        case 'success':
+          await Haptics.notification({ type: NotificationType.Success });
+          break;
+        case 'warning':
+          await Haptics.notification({ type: NotificationType.Warning });
+          break;
+        case 'error':
+          await Haptics.notification({ type: NotificationType.Error });
+          break;
+      }
+    } else {
+      // Web fallback patterns
+      const patterns: Record<string, number | number[]> = {
+        light: 10,
+        medium: 20,
+        heavy: 30,
+        success: [10, 50, 10],
+        warning: [15, 30, 15],
+        error: [20, 100, 20],
+      };
+      vibrate(patterns[type] || 20);
+    }
+  } catch (e) {
+    // Silent fail - haptics not critical
+  }
+};
 
 /**
  * useCountUp - Animates a number from start to end value
@@ -54,22 +109,135 @@ export const useCountUp = (
 };
 
 /**
- * useHaptic - Trigger haptic feedback (mobile devices)
- * Provides light, medium, and heavy impact feedback
+ * useHaptic - Trigger haptic feedback using Capacitor Haptics
+ * Provides light, medium, heavy impact feedback plus notification types
+ * Falls back to navigator.vibrate for web/non-Capacitor environments
  */
 export const useHaptic = () => {
+  const isCapacitor = typeof (window as any).Capacitor !== 'undefined';
+
+  // Fallback vibrate for web
   const vibrate = useCallback((pattern: number | number[]) => {
     if ('vibrate' in navigator) {
       navigator.vibrate(pattern);
     }
   }, []);
 
+  // Impact haptics - physical tap feedback
+  const light = useCallback(async () => {
+    if (isCapacitor) {
+      try {
+        await Haptics.impact({ style: ImpactStyle.Light });
+      } catch {
+        vibrate(10);
+      }
+    } else {
+      vibrate(10);
+    }
+  }, [isCapacitor, vibrate]);
+
+  const medium = useCallback(async () => {
+    if (isCapacitor) {
+      try {
+        await Haptics.impact({ style: ImpactStyle.Medium });
+      } catch {
+        vibrate(20);
+      }
+    } else {
+      vibrate(20);
+    }
+  }, [isCapacitor, vibrate]);
+
+  const heavy = useCallback(async () => {
+    if (isCapacitor) {
+      try {
+        await Haptics.impact({ style: ImpactStyle.Heavy });
+      } catch {
+        vibrate(30);
+      }
+    } else {
+      vibrate(30);
+    }
+  }, [isCapacitor, vibrate]);
+
+  // Notification haptics - semantic feedback
+  const success = useCallback(async () => {
+    if (isCapacitor) {
+      try {
+        await Haptics.notification({ type: NotificationType.Success });
+      } catch {
+        vibrate([10, 50, 10]);
+      }
+    } else {
+      vibrate([10, 50, 10]);
+    }
+  }, [isCapacitor, vibrate]);
+
+  const warning = useCallback(async () => {
+    if (isCapacitor) {
+      try {
+        await Haptics.notification({ type: NotificationType.Warning });
+      } catch {
+        vibrate([15, 30, 15]);
+      }
+    } else {
+      vibrate([15, 30, 15]);
+    }
+  }, [isCapacitor, vibrate]);
+
+  const error = useCallback(async () => {
+    if (isCapacitor) {
+      try {
+        await Haptics.notification({ type: NotificationType.Error });
+      } catch {
+        vibrate([20, 100, 20]);
+      }
+    } else {
+      vibrate([20, 100, 20]);
+    }
+  }, [isCapacitor, vibrate]);
+
+  // Selection haptics - for pickers/scrolling
+  const selectionStart = useCallback(async () => {
+    if (isCapacitor) {
+      try {
+        await Haptics.selectionStart();
+      } catch {
+        // No fallback needed
+      }
+    }
+  }, [isCapacitor]);
+
+  const selectionChanged = useCallback(async () => {
+    if (isCapacitor) {
+      try {
+        await Haptics.selectionChanged();
+      } catch {
+        // No fallback needed
+      }
+    }
+  }, [isCapacitor]);
+
+  const selectionEnd = useCallback(async () => {
+    if (isCapacitor) {
+      try {
+        await Haptics.selectionEnd();
+      } catch {
+        // No fallback needed
+      }
+    }
+  }, [isCapacitor]);
+
   return {
-    light: useCallback(() => vibrate(10), [vibrate]),
-    medium: useCallback(() => vibrate(20), [vibrate]),
-    heavy: useCallback(() => vibrate(30), [vibrate]),
-    success: useCallback(() => vibrate([10, 50, 10]), [vibrate]),
-    error: useCallback(() => vibrate([20, 100, 20]), [vibrate]),
+    light,
+    medium,
+    heavy,
+    success,
+    warning,
+    error,
+    selectionStart,
+    selectionChanged,
+    selectionEnd,
   };
 };
 
@@ -266,6 +434,7 @@ export const useIntersectionObserver = (
       if (ref.current) {
         observer.unobserve(ref.current);
       }
+      observer.disconnect(); // Clean up observer to prevent memory leak
     };
   }, [threshold]);
 

@@ -1,5 +1,13 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { executeWithRollback } from "./utils/transactionHelpers";
+import { loggers } from "./utils/logger";
+import {
+  MAX_WEIGHT_KG,
+  MIN_WEIGHT_KG,
+  MAX_REPS,
+  MIN_REPS,
+} from "./utils/constants";
 
 // Ensure user exists - creates user if doesn't exist (called on sign-in)
 export const ensureUserExists = mutation({
@@ -277,134 +285,230 @@ export const createWorkoutPlan = mutation({
   handler: async (ctx, args) => {
     const userId = args.userId;
 
-    // Normalize weeklyPlan to ensure all blocks have required fields and match schema exactly
-    const normalizedWeeklyPlan = args.weeklyPlan.map((day: any) => {
-      // Ensure day has required fields
-      if (!day.blocks || !Array.isArray(day.blocks)) {
-        throw new Error(`Invalid day structure: missing blocks array for day ${day.day_of_week}`);
+    // Helper function to normalize a single exercise
+    const normalizeExercise = (ex: any, blockIndex: number, exIndex: number) => {
+      if (!ex || typeof ex !== "object") {
+        throw new Error(`Invalid exercise at block ${blockIndex}, exercise ${exIndex}: not an object`);
       }
-      
-      return {
-        day_of_week: typeof day.day_of_week === "number" ? day.day_of_week : parseInt(day.day_of_week),
-        focus: String(day.focus || ""),
-        notes: day.notes ?? null,
-        blocks: day.blocks.map((block: any, blockIndex: number) => {
-          // Validate block has required fields
-          if (!block || typeof block !== "object") {
-            throw new Error(`Invalid block at index ${blockIndex}: block is not an object`);
-          }
-          if (!block.type || typeof block.type !== "string") {
-            throw new Error(`Invalid block at index ${blockIndex}: missing or invalid type field`);
-          }
-          if (!Array.isArray(block.exercises)) {
-            throw new Error(`Invalid block at index ${blockIndex}: exercises must be an array`);
-          }
-          
-          // Normalize block type - ensure it's a valid literal
-          let blockType = String(block.type).toLowerCase();
-          if (blockType !== "single" && blockType !== "superset" && blockType !== "amrap") {
-            console.warn(`[WARN] Invalid block type "${block.type}" at index ${blockIndex}, defaulting to "single"`);
-            blockType = "single"; // Use normalized type
-          }
-          
-          // Normalize exercises first - ensure only schema-allowed fields
-          const normalizedExercises = block.exercises.map((ex: any, exIndex: number) => {
-            if (!ex || typeof ex !== "object") {
-              throw new Error(`Invalid exercise at block ${blockIndex}, exercise ${exIndex}: not an object`);
-            }
-            if (!ex.exercise_name || typeof ex.exercise_name !== "string") {
-              throw new Error(`Invalid exercise at block ${blockIndex}, exercise ${exIndex}: missing or invalid exercise_name`);
-            }
-            if (!ex.category || typeof ex.category !== "string") {
-              throw new Error(`Invalid exercise at block ${blockIndex}, exercise ${exIndex}: missing or invalid category`);
-            }
-            return {
-              exercise_name: String(ex.exercise_name),
-              category: ex.category === "warmup" || ex.category === "main" || ex.category === "cooldown" 
-                ? ex.category 
-                : "main", // Default to main if invalid
-              metrics_template: ex.metrics_template ?? {},
-              notes: ex.notes ?? null,
-              original_exercise_name: ex.original_exercise_name ?? null,
-              rpe: ex.rpe ?? null,
-            };
-          });
+      if (!ex.exercise_name || typeof ex.exercise_name !== "string") {
+        throw new Error(`Invalid exercise at block ${blockIndex}, exercise ${exIndex}: missing or invalid exercise_name`);
+      }
 
-          // Build normalized block based on type - only include fields required by schema
-          // Use explicit object construction to ensure no extra fields leak through
-          if (blockType === "superset") {
-            // Superset block: requires rounds, no duration_minutes
-            // Handle various input formats for rounds - be very defensive
-            let rounds: number = 3; // Default fallback
-            if (block.rounds !== undefined && block.rounds !== null) {
-              if (typeof block.rounds === "number" && isFinite(block.rounds) && block.rounds > 0) {
-                rounds = block.rounds;
-              } else if (typeof block.rounds === "string") {
-                const parsed = parseFloat(block.rounds);
-                if (!isNaN(parsed) && isFinite(parsed) && parsed > 0) {
-                  rounds = parsed;
-                }
-              }
-            }
-            
-            // Final validation - ensure rounds is always a valid positive number
-            if (!isFinite(rounds) || rounds <= 0) {
-              console.warn(`[WARN] Invalid rounds value for superset block at index ${blockIndex}, defaulting to 3`);
-              rounds = 3;
-            }
-            
-            return {
-              type: "superset" as const,
-              title: block.title ?? null,
-              rounds: rounds,
-              exercises: normalizedExercises,
-            };
-          } else if (blockType === "amrap") {
-            // AMRAP block: requires duration_minutes, no rounds
-            // Handle various input formats for duration - be very defensive
-            let duration: number = 10; // Default fallback
-            if (block.duration_minutes !== undefined && block.duration_minutes !== null) {
-              if (typeof block.duration_minutes === "number" && isFinite(block.duration_minutes) && block.duration_minutes > 0) {
-                duration = block.duration_minutes;
-              } else if (typeof block.duration_minutes === "string") {
-                const parsed = parseFloat(block.duration_minutes);
-                if (!isNaN(parsed) && isFinite(parsed) && parsed > 0) {
-                  duration = parsed;
-                }
-              }
-            }
-            
-            // Final validation - ensure duration is always a valid positive number
-            if (!isFinite(duration) || duration <= 0) {
-              console.warn(`[WARN] Invalid duration_minutes value for AMRAP block at index ${blockIndex}, defaulting to 10`);
-              duration = 10;
-            }
-            
-            return {
-              type: "amrap" as const,
-              title: block.title ?? null,
-              duration_minutes: duration,
-              exercises: normalizedExercises,
-            };
-          } else {
-            // Single block: only type, title, exercises (no rounds or duration_minutes)
-            return {
-              type: "single" as const,
-              title: block.title ?? null,
-              exercises: normalizedExercises,
-            };
-          }
-        }),
+      // Infer category if missing
+      let category = ex.category;
+      if (!category || typeof category !== "string") {
+        const exerciseName = ex.exercise_name?.toLowerCase() || '';
+        const isWarmup = exerciseName.includes('stretch') ||
+                        exerciseName.includes('warmup') ||
+                        exerciseName.includes('mobility') ||
+                        exerciseName.includes('activation') ||
+                        exerciseName.includes('foam roll');
+        const isCooldown = exerciseName.includes('cooldown') ||
+                          exerciseName.includes('static stretch');
+        category = isWarmup ? 'warmup' : (isCooldown ? 'cooldown' : 'main');
+      }
+
+      return {
+        exercise_name: String(ex.exercise_name),
+        category: category === "warmup" || category === "main" || category === "cooldown"
+          ? category
+          : "main",
+        metrics_template: ex.metrics_template ?? {},
+        notes: ex.notes ?? null,
+        original_exercise_name: ex.original_exercise_name ?? null,
+        rpe: ex.rpe ?? null,
       };
+    };
+
+    // Helper function to normalize a single block
+    const normalizeBlock = (block: any, blockIndex: number) => {
+      if (!block || typeof block !== "object") {
+        throw new Error(`Invalid block at index ${blockIndex}: block is not an object`);
+      }
+
+      // Default type to "single" if missing
+      let blockType = String(block.type || "single").toLowerCase();
+      if (blockType !== "single" && blockType !== "superset" && blockType !== "amrap" && blockType !== "circuit") {
+        loggers.mutations.warn(`Invalid block type "${block.type}" at index ${blockIndex}, defaulting to "single"`);
+        blockType = "single";
+      }
+
+      const exercises = Array.isArray(block.exercises) ? block.exercises : [];
+      const normalizedExercises = exercises.map((ex: any, exIndex: number) =>
+        normalizeExercise(ex, blockIndex, exIndex)
+      );
+
+      if (blockType === "superset") {
+        let rounds: number = 3;
+        if (block.rounds !== undefined && block.rounds !== null) {
+          if (typeof block.rounds === "number" && isFinite(block.rounds) && block.rounds > 0) {
+            rounds = block.rounds;
+          } else if (typeof block.rounds === "string") {
+            const parsed = parseFloat(block.rounds);
+            if (!isNaN(parsed) && isFinite(parsed) && parsed > 0) {
+              rounds = parsed;
+            }
+          }
+        }
+        if (!isFinite(rounds) || rounds <= 0) rounds = 3;
+
+        return {
+          type: "superset" as const,
+          title: block.title ?? null,
+          rounds: rounds,
+          exercises: normalizedExercises,
+        };
+      } else if (blockType === "amrap") {
+        let duration: number = 10;
+        if (block.duration_minutes !== undefined && block.duration_minutes !== null) {
+          if (typeof block.duration_minutes === "number" && isFinite(block.duration_minutes) && block.duration_minutes > 0) {
+            duration = block.duration_minutes;
+          } else if (typeof block.duration_minutes === "string") {
+            const parsed = parseFloat(block.duration_minutes);
+            if (!isNaN(parsed) && isFinite(parsed) && parsed > 0) {
+              duration = parsed;
+            }
+          }
+        }
+        if (!isFinite(duration) || duration <= 0) duration = 10;
+
+        return {
+          type: "amrap" as const,
+          title: block.title ?? null,
+          duration_minutes: duration,
+          exercises: normalizedExercises,
+        };
+      } else if (blockType === "circuit") {
+        // Circuit blocks can have rounds OR duration_minutes (or both)
+        let rounds: number | undefined;
+        let duration: number | undefined;
+
+        if (block.rounds !== undefined && block.rounds !== null) {
+          if (typeof block.rounds === "number" && isFinite(block.rounds) && block.rounds > 0) {
+            rounds = block.rounds;
+          } else if (typeof block.rounds === "string") {
+            const parsed = parseFloat(block.rounds);
+            if (!isNaN(parsed) && isFinite(parsed) && parsed > 0) {
+              rounds = parsed;
+            }
+          }
+        }
+
+        if (block.duration_minutes !== undefined && block.duration_minutes !== null) {
+          if (typeof block.duration_minutes === "number" && isFinite(block.duration_minutes) && block.duration_minutes > 0) {
+            duration = block.duration_minutes;
+          } else if (typeof block.duration_minutes === "string") {
+            const parsed = parseFloat(block.duration_minutes);
+            if (!isNaN(parsed) && isFinite(parsed) && parsed > 0) {
+              duration = parsed;
+            }
+          }
+        }
+
+        // Default to 3 rounds if neither is specified
+        if (!rounds && !duration) {
+          rounds = 3;
+        }
+
+        return {
+          type: "circuit" as const,
+          title: block.title ?? null,
+          ...(rounds !== undefined && { rounds }),
+          ...(duration !== undefined && { duration_minutes: duration }),
+          exercises: normalizedExercises,
+        };
+      } else {
+        return {
+          type: "single" as const,
+          title: block.title ?? null,
+          exercises: normalizedExercises,
+        };
+      }
+    };
+
+    // Helper function to normalize a session (for 2x daily training)
+    const normalizeSession = (session: any, sessionIndex: number) => {
+      const blocks = Array.isArray(session.blocks) ? session.blocks : [];
+
+      // Validate and normalize time_of_day - only allow valid values
+      const validTimeOfDay = ["morning", "evening", "all-day"];
+      let timeOfDay: "morning" | "evening" | "all-day" | null = null;
+      if (session.time_of_day && validTimeOfDay.includes(session.time_of_day)) {
+        timeOfDay = session.time_of_day;
+      } else if (session.time_of_day) {
+        // Try to infer from invalid value
+        const tod = String(session.time_of_day).toLowerCase();
+        if (tod.includes("morning") || tod.includes("am")) {
+          timeOfDay = "morning";
+        } else if (tod.includes("evening") || tod.includes("pm") || tod.includes("night")) {
+          timeOfDay = "evening";
+        } else {
+          // Default based on session index (0 = morning, 1 = evening)
+          timeOfDay = sessionIndex === 0 ? "morning" : "evening";
+        }
+        loggers.mutations.warn(`Invalid time_of_day "${session.time_of_day}" at session ${sessionIndex}, normalized to "${timeOfDay}"`);
+      }
+
+      return {
+        session_name: session.session_name ?? null,
+        time_of_day: timeOfDay,
+        estimated_duration: session.estimated_duration ?? null,
+        blocks: blocks.map((block: any, blockIdx: number) => normalizeBlock(block, blockIdx)),
+      };
+    };
+
+    // Normalize weeklyPlan - handles BOTH blocks and sessions structures
+    const normalizedWeeklyPlan = args.weeklyPlan.map((day: any) => {
+      const dayOfWeek = typeof day.day_of_week === "number" ? day.day_of_week : parseInt(day.day_of_week);
+      const focus = String(day.focus || "");
+      const notes = day.notes ?? null;
+
+      // Check if this day has sessions (2x daily training)
+      const hasSessions = day.sessions && Array.isArray(day.sessions) && day.sessions.length > 0;
+      // Check if this day has blocks (single session training)
+      const hasBlocks = day.blocks && Array.isArray(day.blocks) && day.blocks.length > 0;
+
+      if (hasSessions) {
+        // 2x daily training: normalize sessions and set blocks to empty
+        loggers.mutations.debug(`Day ${dayOfWeek}: Processing ${day.sessions.length} sessions (2x daily)`);
+        return {
+          day_of_week: dayOfWeek,
+          focus: focus,
+          notes: notes,
+          sessions: day.sessions.map((session: any, idx: number) => normalizeSession(session, idx)),
+          blocks: [], // Empty for 2x daily days - exercises are in sessions
+        };
+      } else if (hasBlocks) {
+        // Single session training: normalize blocks
+        loggers.mutations.debug(`Day ${dayOfWeek}: Processing ${day.blocks.length} blocks (single session)`);
+        return {
+          day_of_week: dayOfWeek,
+          focus: focus,
+          notes: notes,
+          blocks: day.blocks.map((block: any, idx: number) => normalizeBlock(block, idx)),
+        };
+      } else {
+        // Rest day or empty day
+        loggers.mutations.debug(`Day ${dayOfWeek}: Rest day (no blocks or sessions)`);
+        return {
+          day_of_week: dayOfWeek,
+          focus: focus,
+          notes: notes,
+          blocks: [],
+        };
+      }
     });
 
-    // Debug: Log first block to verify structure before insert
-    if (normalizedWeeklyPlan[0]?.blocks[0]) {
-      const firstBlock = normalizedWeeklyPlan[0].blocks[0];
-      console.log("[DEBUG] First block structure:", JSON.stringify(firstBlock, null, 2));
-      console.log("[DEBUG] First block type:", firstBlock.type);
-      console.log("[DEBUG] First block keys:", Object.keys(firstBlock));
-    }
+    // Debug: Log structure summary
+    const daysSummary = normalizedWeeklyPlan.map((d: any) => ({
+      day: d.day_of_week,
+      focus: d.focus,
+      blocks: d.blocks?.length || 0,
+      sessions: d.sessions?.length || 0,
+      exercises: (d.blocks || []).flatMap((b: any) => b.exercises || []).length +
+                 (d.sessions || []).flatMap((s: any) => (s.blocks || []).flatMap((b: any) => b.exercises || [])).length
+    }));
+    loggers.mutations.info("Plan structure:", JSON.stringify(daysSummary));
 
     // Extract unique exercises server-side (FAST - runs in Convex)
     const exerciseMap = new Map<string, { exercise_name: string; notes?: string; category: 'warmup' | 'main' | 'cooldown' }>();
@@ -421,11 +525,28 @@ export const createWorkoutPlan = mutation({
       }
     };
 
-    // Extract from weekly plan (already normalized, so we can iterate directly)
-    normalizedWeeklyPlan.forEach(day => {
-      day.blocks.forEach(block => {
-        block.exercises.forEach(addExercise);
-      });
+    // Extract from weekly plan (handles both blocks and sessions)
+    normalizedWeeklyPlan.forEach((day: any) => {
+      // Extract from blocks (single session days)
+      if (day.blocks && Array.isArray(day.blocks)) {
+        day.blocks.forEach((block: any) => {
+          if (block.exercises && Array.isArray(block.exercises)) {
+            block.exercises.forEach(addExercise);
+          }
+        });
+      }
+      // Extract from sessions (2x daily training days)
+      if (day.sessions && Array.isArray(day.sessions)) {
+        day.sessions.forEach((session: any) => {
+          if (session.blocks && Array.isArray(session.blocks)) {
+            session.blocks.forEach((block: any) => {
+              if (block.exercises && Array.isArray(block.exercises)) {
+                block.exercises.forEach(addExercise);
+              }
+            });
+          }
+        });
+      }
     });
 
     // Extract from daily routine if present
@@ -435,40 +556,106 @@ export const createWorkoutPlan = mutation({
     }
 
     const extractedExercises = Array.from(exerciseMap.values());
+    loggers.mutations.info(`Extracted ${extractedExercises.length} unique exercises from plan`);
 
-    const planId = await ctx.db.insert("workoutPlans", {
-      userId,
-      name: args.name,
-      weeklyPlan: normalizedWeeklyPlan,
-      dailyRoutine: normalizedDailyRoutine,
-      createdAt: new Date().toISOString(),
+    // Use transaction to ensure plan creation and user update are atomic
+    const result = await executeWithRollback(ctx.db, async (tracker) => {
+      const planId = await ctx.db.insert("workoutPlans", {
+        userId,
+        name: args.name,
+        weeklyPlan: normalizedWeeklyPlan,
+        dailyRoutine: normalizedDailyRoutine,
+        createdAt: new Date().toISOString(),
+      });
+      tracker.trackInsert("workoutPlans", planId);
+
+      // Set as active plan
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .first();
+
+      if (!user) {
+        // Create user if doesn't exist
+        const newUserId = await ctx.db.insert("users", {
+          userId,
+          activePlanId: planId,
+          lastProgressionApplied: null,
+          bodyMetrics: null,
+          goals: null,
+          trainingPreferences: null,
+        });
+        tracker.trackInsert("users", newUserId);
+      } else {
+        await ctx.db.patch(user._id, { activePlanId: planId });
+        tracker.trackUpdate("users", user._id, { activePlanId: user.activePlanId });
+      }
+
+      // Save exercises to exerciseCache (if they don't already exist)
+      // This builds the exercise database over time without duplicates
+      let newExercisesAdded = 0;
+      for (const exercise of extractedExercises) {
+        const normalized = exercise.exercise_name.toLowerCase().trim().replace(/\s+/g, "_");
+
+        // Check if exercise already exists
+        const existing = await ctx.db
+          .query("exerciseCache")
+          .withIndex("by_exerciseName", (q) => q.eq("exercise_name", normalized))
+          .first();
+
+        if (!existing) {
+          // Add new exercise to cache with basic metadata
+          await ctx.db.insert("exerciseCache", {
+            exercise_name: normalized,
+            explanation: `${exercise.exercise_name} - exercise added from plan generation`,
+            muscles_worked: null,
+            form_cue: null,
+            common_mistake: null,
+            generated_at: new Date().toISOString(),
+            hit_count: 1,
+            last_accessed: new Date().toISOString(),
+            source: "generated_data",
+            primary_category: exercise.category,
+            equipment_required: [],
+            contraindications: [],
+            movement_pattern: null,
+            exercise_tier: null,
+            injury_risk: null,
+            evidence_level: null,
+            minimum_experience_level: "beginner",
+            value_score: null,
+            sport_applications: null,
+            global_usage_count: 1,
+            last_30_day_usage: 1,
+            verified_by_expert: null,
+            last_reviewed: null,
+          });
+          newExercisesAdded++;
+          tracker.trackInsert("exerciseCache", normalized as any); // Track for potential rollback
+        } else {
+          // Update usage count for existing exercise
+          await ctx.db.patch(existing._id, {
+            hit_count: (existing.hit_count || 0) + 1,
+            global_usage_count: (existing.global_usage_count || 0) + 1,
+            last_30_day_usage: (existing.last_30_day_usage || 0) + 1,
+            last_accessed: new Date().toISOString(),
+          });
+        }
+      }
+
+      if (newExercisesAdded > 0) {
+        loggers.mutations.info(`Added ${newExercisesAdded} new exercises to database`);
+      }
+
+      // Return both planId and extracted exercises for client to use
+      return {
+        planId,
+        extractedExercises,
+        newExercisesAdded,
+      };
     });
 
-    // Set as active plan
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .first();
-
-    if (!user) {
-      // Create user if doesn't exist
-      await ctx.db.insert("users", {
-        userId,
-        activePlanId: planId,
-        lastProgressionApplied: null,
-        bodyMetrics: null,
-        goals: null,
-        trainingPreferences: null,
-      });
-    } else {
-      await ctx.db.patch(user._id, { activePlanId: planId });
-    }
-
-    // Return both planId and extracted exercises for client to use
-    return {
-      planId,
-      extractedExercises,
-    };
+    return result;
   },
 });
 
@@ -482,6 +669,15 @@ export const updateWorkoutPlan = mutation({
     dailyRoutine: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Unauthorized: Must be logged in to update plans");
+    }
+    if (args.userId !== identity.subject) {
+      throw new Error("Unauthorized: userId mismatch");
+    }
+
     const userId = args.userId;
     const plan = await ctx.db.get(args.planId);
 
@@ -518,7 +714,28 @@ export const deleteWorkoutPlan = mutation({
       throw new Error("Plan not found or unauthorized");
     }
 
-    // If this is the active plan, clear it
+    // CASCADE DELETE: Cleanup related data
+    // 1. Delete all sharedPlans pointing to this plan
+    const sharedPlans = await ctx.db
+      .query("sharedPlans")
+      .filter((q) => q.eq(q.field("planId"), args.planId))
+      .collect();
+
+    for (const sharedPlan of sharedPlans) {
+      await ctx.db.delete(sharedPlan._id);
+    }
+
+    // 2. Delete buddy relationships with this sharedPlanId
+    const buddyRelationships = await ctx.db
+      .query("workoutBuddies")
+      .filter((q) => q.eq(q.field("sharedPlanId"), args.planId))
+      .collect();
+
+    for (const buddy of buddyRelationships) {
+      await ctx.db.delete(buddy._id);
+    }
+
+    // 3. If this is the active plan, clear it
     const user = await ctx.db
       .query("users")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -528,6 +745,7 @@ export const deleteWorkoutPlan = mutation({
       await ctx.db.patch(user._id, { activePlanId: null });
     }
 
+    // 4. Finally, delete the plan itself
     await ctx.db.delete(args.planId);
   },
 });
@@ -580,6 +798,33 @@ export const addWorkoutLog = mutation({
   },
 });
 
+// Delete workout log
+export const deleteWorkoutLog = mutation({
+  args: {
+    logId: v.id("workoutLogs"),
+  },
+  handler: async (ctx, args) => {
+    // SECURITY: Verify ownership before deletion
+    const log = await ctx.db.get(args.logId);
+    if (!log) {
+      throw new Error("Workout log not found");
+    }
+
+    // Get authenticated user
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Unauthorized: Must be logged in to delete workout logs");
+    }
+
+    // Verify the log belongs to the authenticated user
+    if (log.userId !== identity.subject) {
+      throw new Error("Unauthorized: Cannot delete another user's workout log");
+    }
+
+    await ctx.db.delete(args.logId);
+  },
+});
+
 // Save exercise history
 export const saveExerciseHistory = mutation({
   args: {
@@ -589,6 +834,20 @@ export const saveExerciseHistory = mutation({
     reps: v.number(),
   },
   handler: async (ctx, args) => {
+    // INPUT VALIDATION
+    if (!args.exerciseName || !args.exerciseName.trim()) {
+      throw new Error("Exercise name cannot be empty");
+    }
+    if (args.weight < MIN_WEIGHT_KG || args.weight > MAX_WEIGHT_KG) {
+      throw new Error(`Invalid weight: must be between ${MIN_WEIGHT_KG} and ${MAX_WEIGHT_KG} kg`);
+    }
+    if (args.reps < MIN_REPS || args.reps > MAX_REPS) {
+      throw new Error(`Invalid reps: must be between ${MIN_REPS} and ${MAX_REPS}`);
+    }
+    if (!Number.isFinite(args.weight) || !Number.isFinite(args.reps)) {
+      throw new Error("Weight and reps must be valid numbers");
+    }
+
     const userId = args.userId;
     const normalized = args.exerciseName.toLowerCase().replace(/\s+/g, "_");
 
@@ -624,6 +883,7 @@ export const cacheExerciseExplanation = mutation({
     muscles_worked: v.optional(v.array(v.string())),
     form_cue: v.optional(v.string()),
     common_mistake: v.optional(v.string()),
+    step_by_step: v.optional(v.array(v.string())),
     source: v.union(v.literal("gemini_ultra"), v.literal("gemini_api"), v.literal("scientific_textbooks"), v.literal("generated_data")),
     // NEW: Full metadata fields
     equipment_required: v.optional(v.array(v.string())),
@@ -659,6 +919,7 @@ export const cacheExerciseExplanation = mutation({
       muscles_worked: args.muscles_worked || existing?.muscles_worked || null,
       form_cue: args.form_cue || existing?.form_cue || null,
       common_mistake: args.common_mistake || existing?.common_mistake || null,
+      step_by_step: args.step_by_step || existing?.step_by_step || null,
       generated_at: existing?.generated_at || now,
       hit_count: (existing?.hit_count || 0) + 1,
       last_accessed: now,
@@ -707,6 +968,19 @@ export const cacheExerciseExplanation = mutation({
       
       await ctx.db.insert("exerciseCache", newCacheData);
     }
+  },
+});
+
+// Update exercise with step_by_step only
+export const updateExerciseStepByStep = mutation({
+  args: {
+    exerciseId: v.id("exerciseCache"),
+    step_by_step: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.exerciseId, {
+      step_by_step: args.step_by_step,
+    });
   },
 });
 
@@ -844,6 +1118,70 @@ export const updateExerciseMetadata = mutation({
   },
 });
 
+// Update exercise role and German translations
+export const updateExerciseRoleAndTranslations = mutation({
+  args: {
+    exerciseName: v.string(),
+    exercise_role: v.optional(v.union(
+      v.literal("core"),
+      v.literal("accessory"),
+      v.literal("complementary"),
+      v.literal("isolation"),
+      v.literal("cardio"),
+      v.literal("mobility")
+    )),
+    display_name_de: v.optional(v.string()),
+    explanation_de: v.optional(v.string()),
+    form_cue_de: v.optional(v.string()),
+    common_mistake_de: v.optional(v.string()),
+    muscles_worked_de: v.optional(v.array(v.string())),
+    default_metrics: v.optional(v.object({
+      type: v.union(
+        v.literal("sets_reps_weight"),
+        v.literal("duration_only"),
+        v.literal("distance_time"),
+        v.literal("sets_distance_rest"),
+        v.literal("sets_duration")
+      ),
+      sets: v.optional(v.number()),
+      reps: v.optional(v.number()),
+      duration_minutes: v.optional(v.number()),
+      distance_m: v.optional(v.number()),
+      distance_km: v.optional(v.number()),
+      rest_s: v.optional(v.number()),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const normalized = args.exerciseName.toLowerCase().trim().replace(/\s+/g, "_");
+
+    const existing = await ctx.db
+      .query("exerciseCache")
+      .withIndex("by_exerciseName", (q) => q.eq("exercise_name", normalized))
+      .first();
+
+    if (!existing) {
+      throw new Error(`Exercise ${args.exerciseName} not found in cache`);
+    }
+
+    const updateData: Record<string, unknown> = {
+      last_accessed: new Date().toISOString(),
+    };
+
+    // Update provided fields
+    if (args.exercise_role !== undefined) updateData.exercise_role = args.exercise_role;
+    if (args.display_name_de !== undefined) updateData.display_name_de = args.display_name_de;
+    if (args.explanation_de !== undefined) updateData.explanation_de = args.explanation_de;
+    if (args.form_cue_de !== undefined) updateData.form_cue_de = args.form_cue_de;
+    if (args.common_mistake_de !== undefined) updateData.common_mistake_de = args.common_mistake_de;
+    if (args.muscles_worked_de !== undefined) updateData.muscles_worked_de = args.muscles_worked_de;
+    if (args.default_metrics !== undefined) updateData.default_metrics = args.default_metrics;
+
+    await ctx.db.patch(existing._id, updateData);
+
+    return { success: true, exerciseName: normalized };
+  },
+});
+
 // Save exercise modifications
 export const saveExerciseModification = mutation({
   args: {
@@ -865,10 +1203,10 @@ export const saveExerciseModification = mutation({
       .first();
 
     if (existing) {
-      // Merge: combine progressions/regressions from multiple sources
+      // Merge: combine progressions/regressions from multiple sources with deduplication
       await ctx.db.patch(existing._id, {
-        progressions: [...existing.progressions, ...args.progressions],
-        regressions: [...existing.regressions, ...args.regressions],
+        progressions: Array.from(new Set([...existing.progressions, ...args.progressions])),
+        regressions: Array.from(new Set([...existing.regressions, ...args.regressions])),
         // Merge modifications and alternatives
         modifications: { ...existing.modifications, ...args.modifications },
         equipment_alternatives: { ...existing.equipment_alternatives, ...args.equipment_alternatives },
@@ -924,12 +1262,12 @@ export const saveInjuryProtocol = mutation({
       .first();
 
     if (existing) {
-      // Merge: combine substitutions and prehab from multiple sources
+      // Merge: combine substitutions and prehab from multiple sources with deduplication
       await ctx.db.patch(existing._id, {
-        exercises_to_avoid: [...existing.exercises_to_avoid, ...args.exercises_to_avoid],
-        exercise_substitutions: [...existing.exercise_substitutions, ...args.exercise_substitutions],
-        prehab_exercises: [...existing.prehab_exercises, ...args.prehab_exercises],
-        warning_signs: [...existing.warning_signs, ...args.warning_signs],
+        exercises_to_avoid: Array.from(new Set([...existing.exercises_to_avoid, ...args.exercises_to_avoid])),
+        exercise_substitutions: Array.from(new Set([...existing.exercise_substitutions, ...args.exercise_substitutions])),
+        prehab_exercises: Array.from(new Set([...existing.prehab_exercises, ...args.prehab_exercises])),
+        warning_signs: Array.from(new Set([...existing.warning_signs, ...args.warning_signs])),
       });
     } else {
       await ctx.db.insert("injuryProtocols", {
@@ -1715,5 +2053,54 @@ export const upgradeToPremium = mutation({
     apiUsage.tier = "premium";
 
     await ctx.db.patch(user._id, { apiUsage });
+  },
+});
+
+/**
+ * Set admin role for a user
+ * NOTE: This should only be run by existing admins or through Convex dashboard
+ */
+export const setAdminRole = mutation({
+  args: {
+    targetUserId: v.string(),
+    role: v.union(v.literal("user"), v.literal("admin")),
+  },
+  handler: async (ctx, args) => {
+    // Get authenticated user
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Unauthorized: Must be logged in");
+    }
+
+    // Check if caller is an admin (or this is the first admin being set)
+    const callerUserId = identity.subject;
+    const caller = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", callerUserId))
+      .first();
+
+    // Count existing admins
+    const allUsers = await ctx.db.query("users").collect();
+    const adminCount = allUsers.filter(u => u.role === "admin").length;
+
+    // Allow if: caller is admin OR there are no admins yet (bootstrap case)
+    if (adminCount > 0 && caller?.role !== "admin") {
+      throw new Error("Unauthorized: Only admins can set roles");
+    }
+
+    // Find target user
+    const targetUser = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", args.targetUserId))
+      .first();
+
+    if (!targetUser) {
+      throw new Error("User not found");
+    }
+
+    // Update role
+    await ctx.db.patch(targetUser._id, { role: args.role });
+
+    return { success: true, userId: args.targetUserId, role: args.role };
   },
 });

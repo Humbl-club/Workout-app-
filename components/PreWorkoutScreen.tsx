@@ -23,6 +23,31 @@ export default function PreWorkoutScreen({ session, recentLogs, onStart, onCance
   const pulse = usePulse(3000); // Breathing circle pulse
   const haptic = useHaptic();
 
+  // Session settings state (load from localStorage if available)
+  const [sessionSettings, setSessionSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('rebld_session_settings');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      restTimerAutoStart: true,
+      audioCues: true,
+      vibrationFeedback: true,
+    };
+  });
+
+  // Toggle a session setting
+  const toggleSetting = (key: keyof typeof sessionSettings) => {
+    haptic.light();
+    setSessionSettings((prev: typeof sessionSettings) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem('rebld_session_settings', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
   // Extract equipment from session
   useEffect(() => {
     const equipmentSet = new Set<string>();
@@ -159,12 +184,12 @@ export default function PreWorkoutScreen({ session, recentLogs, onStart, onCance
       {/* Workout Overview */}
       <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 sm:p-6 mb-4" style={{ boxShadow: 'var(--shadow-sm)' }}>
         <h2 className="text-lg font-bold text-[var(--text-primary)] mb-2">{session.focus}</h2>
-        <div className="flex items-center flex-wrap gap-3 text-[13px] text-[var(--text-secondary)]">
-          <span className="flex items-center gap-1.5">⏱️ ~45 min</span>
-          <span>•</span>
-          <span className="flex items-center gap-1.5">💪 {exerciseCount} exercises</span>
-          <span>•</span>
-          <span className="flex items-center gap-1.5">🔥 Moderate</span>
+        <div className="flex items-center flex-wrap gap-4 text-[13px] text-[var(--text-secondary)]">
+          <span className="font-medium">~45 min</span>
+          <span className="w-1 h-1 rounded-full bg-[var(--text-tertiary)]" />
+          <span className="font-medium">{exerciseCount} exercises</span>
+          <span className="w-1 h-1 rounded-full bg-[var(--text-tertiary)]" />
+          <span className="font-medium">Moderate</span>
         </div>
       </div>
 
@@ -204,19 +229,69 @@ export default function PreWorkoutScreen({ session, recentLogs, onStart, onCance
           <CogIcon className="w-5 h-5 text-[var(--text-tertiary)]" />
           <h3 className="font-semibold text-base text-[var(--text-primary)]">{t('workout.sessionSettings')}</h3>
         </div>
-        <div className="space-y-3 text-sm text-[var(--text-secondary)]">
-          <div className="flex items-center justify-between">
-            <span>{t('workout.restTimerAutoStart')}</span>
-            <span className="text-[var(--success)]">✓</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>{t('workout.audioCues')}</span>
-            <span className="text-[var(--success)]">✓</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>{t('workout.vibrationFeedback')}</span>
-            <span className="text-[var(--success)]">✓</span>
-          </div>
+        <div className="space-y-4 text-sm">
+          {/* Rest Timer Auto Start */}
+          <button
+            onClick={() => toggleSetting('restTimerAutoStart')}
+            className="w-full flex items-center justify-between py-2 min-h-[44px] active:opacity-80 transition-opacity"
+          >
+            <span className="text-[var(--text-secondary)]">{t('workout.restTimerAutoStart')}</span>
+            <div
+              className={`relative w-12 h-7 rounded-full transition-colors duration-200 ${
+                sessionSettings.restTimerAutoStart
+                  ? 'bg-[var(--success)]'
+                  : 'bg-[var(--surface-hover)]'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                  sessionSettings.restTimerAutoStart ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
+            </div>
+          </button>
+
+          {/* Audio Cues */}
+          <button
+            onClick={() => toggleSetting('audioCues')}
+            className="w-full flex items-center justify-between py-2 min-h-[44px] active:opacity-80 transition-opacity"
+          >
+            <span className="text-[var(--text-secondary)]">{t('workout.audioCues')}</span>
+            <div
+              className={`relative w-12 h-7 rounded-full transition-colors duration-200 ${
+                sessionSettings.audioCues
+                  ? 'bg-[var(--success)]'
+                  : 'bg-[var(--surface-hover)]'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                  sessionSettings.audioCues ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
+            </div>
+          </button>
+
+          {/* Vibration Feedback */}
+          <button
+            onClick={() => toggleSetting('vibrationFeedback')}
+            className="w-full flex items-center justify-between py-2 min-h-[44px] active:opacity-80 transition-opacity"
+          >
+            <span className="text-[var(--text-secondary)]">{t('workout.vibrationFeedback')}</span>
+            <div
+              className={`relative w-12 h-7 rounded-full transition-colors duration-200 ${
+                sessionSettings.vibrationFeedback
+                  ? 'bg-[var(--success)]'
+                  : 'bg-[var(--surface-hover)]'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                  sessionSettings.vibrationFeedback ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
+            </div>
+          </button>
         </div>
       </div>
 
