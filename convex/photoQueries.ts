@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
+import { isAuthenticatedUser } from "./utils/accessControl";
 
 export const getUserProgressPhotos = query({
   args: {
@@ -7,6 +8,11 @@ export const getUserProgressPhotos = query({
     limit: v.optional(v.number())
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user (returns empty if not auth'd)
+    if (!await isAuthenticatedUser(ctx, args.userId)) {
+      return [];
+    }
+
     const photos = await ctx.db
       .query("progressPhotos")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -23,6 +29,11 @@ export const getLatestPhoto = query({
     photoType: v.optional(v.union(v.literal("front"), v.literal("side"), v.literal("back")))
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user (returns null if not auth'd)
+    if (!await isAuthenticatedUser(ctx, args.userId)) {
+      return null;
+    }
+
     let query = ctx.db
       .query("progressPhotos")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId));

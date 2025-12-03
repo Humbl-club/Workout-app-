@@ -160,6 +160,7 @@ export async function getUserIdFromAuth(
 
 /**
  * Verify authenticated user matches userId parameter
+ * For MUTATIONS: throws error if not authenticated or mismatch
  */
 export async function verifyAuthenticatedUser(
   ctx: GenericMutationCtx<DataModel> | GenericQueryCtx<DataModel>,
@@ -170,6 +171,23 @@ export async function verifyAuthenticatedUser(
   if (authenticatedUserId !== userId) {
     throw new Error("Unauthorized: User ID mismatch");
   }
+}
+
+/**
+ * Check if authenticated user matches userId parameter (non-throwing)
+ * For QUERIES: returns false if not authenticated or mismatch (allows graceful handling)
+ */
+export async function isAuthenticatedUser(
+  ctx: GenericMutationCtx<DataModel> | GenericQueryCtx<DataModel>,
+  userId: string
+): Promise<boolean> {
+  const identity = await ctx.auth.getUserIdentity();
+
+  if (!identity) {
+    return false; // Not authenticated yet (loading state)
+  }
+
+  return identity.subject === userId;
 }
 
 /**

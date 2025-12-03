@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { PlanDay, WorkoutLog, LoggedExercise, WorkoutPlan, DailyRoutine, UserProfile, WorkoutSession } from './types';
-import { useUser } from '@clerk/clerk-react';
+import { useUser, useAuth } from '@clerk/clerk-react';
 import { useMutation } from 'convex/react';
 import { api } from './convex/_generated/api';
 import { Id } from './convex/_generated/dataModel';
@@ -17,12 +17,16 @@ import GoalTrackingPage from './pages/GoalTrackingPage';
 import SessionSummaryPage from './pages/SessionSummaryPage';
 import BuddiesPage from './pages/BuddiesPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TermsOfServicePage from './pages/TermsOfServicePage';
 import useWorkoutLogs from './hooks/useWorkoutLogs';
 import useWorkoutPlan from './hooks/useWorkoutPlan';
 import useUserProfile from './hooks/useUserProfile';
 import AuthPage from './pages/AuthPage';
 import LandingPage from './pages/LandingPage';
 import FullScreenLoader from './components/layout/FullScreenLoader';
+// AnimatedSplash is now pure HTML/CSS in index.html for instant loading
+import SSOCallback from './components/SSOCallback';
 import ToastContainer, { notify } from './components/layout/Toast';
 import { useTheme } from './hooks/useTheme';
 import { useAnalytics, analytics, EventTypes } from './services/analyticsService';
@@ -32,18 +36,32 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import OfflineIndicator from './components/OfflineIndicator';
 import { useExercisePreload } from './hooks/useExercisePreload';
+import { useSwipeNavigation } from './hooks/useSwipeNavigation';
+import { SplashScreen } from '@capacitor/splash-screen';
 
-// Storage key for tracking if user has seen the landing page
+// Storage keys
 const LANDING_SEEN_KEY = 'rebld:seen_landing';
 const LOCATION_TRACKED_KEY = 'rebld:location_tracked';
+const SPLASH_SHOWN_KEY = 'rebld:splash_shown_session';
 
 
-type Page = 'home' | 'goals' | 'buddies' | 'plan' | 'profile' | 'admin';
+type Page = 'home' | 'goals' | 'buddies' | 'plan' | 'profile' | 'admin' | 'privacy' | 'terms';
 // Extended to support WorkoutSession for 2x daily training
 type SessionType = PlanDay | DailyRoutine | WorkoutSession;
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
+  const [showSplash, setShowSplash] = useState(() => {
+    // Show splash once per session
+    if (typeof window !== 'undefined') {
+      const shown = sessionStorage.getItem(SPLASH_SHOWN_KEY);
+      if (!shown) {
+        sessionStorage.setItem(SPLASH_SHOWN_KEY, 'true');
+        return true;
+      }
+    }
+    return false;
+  });
 
   // Announce page changes for screen readers
   useEffect(() => {
@@ -54,14 +72,42 @@ export default function App() {
       plan: 'Plan',
       profile: 'Profile',
       admin: 'Admin Dashboard',
+      privacy: 'Privacy Policy',
+      terms: 'Terms of Service',
     };
     ariaAnnouncer.announcePage(pageNames[currentPage]);
   }, [currentPage]);
   const { user, isLoaded: clerkLoaded } = useUser();
+  const { getToken, isSignedIn } = useAuth();
   const { theme, toggleTheme } = useTheme();
+
+  // Debug: Test Clerk JWT token retrieval
+  useEffect(() => {
+    if (isSignedIn) {
+      getToken({ template: 'convex' })
+        .then(token => {
+          console.log('[Auth Debug] Convex JWT token:', token ? `${token.substring(0, 50)}...` : 'NULL');
+          if (token) {
+            // Decode and log the payload (middle part of JWT)
+            try {
+              const payload = JSON.parse(atob(token.split('.')[1]));
+              console.log('[Auth Debug] JWT payload:', payload);
+            } catch (e) {
+              console.error('[Auth Debug] Failed to decode token:', e);
+            }
+          }
+        })
+        .catch(err => {
+          console.error('[Auth Debug] getToken error:', err);
+        });
+    }
+  }, [isSignedIn, getToken]);
 
   // Initialize analytics
   useAnalytics(user?.id || null);
+
+  // Capacitor splash is hidden by inline script in index.html
+  // This ensures it hides as soon as HTML renders, before React even loads
 
   // Initialize ARIA announcer for accessibility
   useEffect(() => {
@@ -146,10 +192,13 @@ export default function App() {
               }).catch(console.error);
             }
 
-            // Update device data
+            // Update device data - filter out null values (Convex expects undefined, not null)
+            const filteredDeviceData = Object.fromEntries(
+              Object.entries(deviceData).filter(([_, v]) => v !== null)
+            );
             updateDeviceMutation({
               userId: user.id,
-              ...deviceData,
+              ...filteredDeviceData,
             }).catch(console.error);
 
             // Mark as tracked for this session
@@ -195,6 +244,15 @@ export default function App() {
     return localStorage.getItem(LANDING_SEEN_KEY) === 'true';
   });
 
+  // Swipe navigation between pages (only when not in a session/modal)
+  const swipeEnabled = !activeSession && !pendingSession && !sessionToSummarize && !isChatOpen && !!activePlan;
+  const { swipeStyle, swipeDirection } = useSwipeNavigation({
+    currentPage: currentPage as 'home' | 'goals' | 'buddies' | 'plan' | 'profile',
+    onNavigate: setCurrentPage,
+    enabled: swipeEnabled,
+    threshold: 0.25, // 25% of screen width to trigger navigation
+  });
+
   const handleStartSession = useCallback((session: SessionType) => {
     // Normalize different session types into a PlanDay so SessionTracker can handle it
     let normalizedSession: PlanDay;
@@ -230,9 +288,26 @@ export default function App() {
     else {
       normalizedSession = session as PlanDay;
     }
-    // Show PreWorkoutScreen first instead of jumping straight into session
-    setPendingSession(normalizedSession);
-  }, []);
+
+    // Show PreWorkoutScreen with "Beat Your Last Session" if user has workout history
+    // Skip directly to workout if no history (first-time users get no friction)
+    if (logs && logs.length > 0) {
+      setPendingSession(normalizedSession);
+    } else {
+      // No history - go directly to workout
+      setActiveSession(normalizedSession);
+
+      // Track workout started
+      if (user?.id) {
+        analytics.track(EventTypes.WORKOUT_STARTED, {
+          planId: activePlan?.id,
+          dayOfWeek: normalizedSession.day_of_week,
+          focus: normalizedSession.focus,
+          blockCount: normalizedSession.blocks?.length || 0,
+        });
+      }
+    }
+  }, [user?.id, activePlan?.id, logs]);
 
   // Called when user confirms start from PreWorkoutScreen
   const handleConfirmStart = useCallback(() => {
@@ -532,6 +607,10 @@ export default function App() {
             <AdminDashboardPage />
           </ErrorBoundary>
         );
+      case 'privacy':
+        return <PrivacyPolicyPage onBack={() => setCurrentPage('profile')} />;
+      case 'terms':
+        return <TermsOfServicePage onBack={() => setCurrentPage('profile')} />;
       case 'plan':
         return (
           <ErrorBoundary componentName="PlanPage">
@@ -586,14 +665,105 @@ export default function App() {
     setShowAuth(true);
   }, []);
 
-  if (!clerkLoaded || (user && (!logsLoaded || !planLoaded || !profileLoaded))) {
-      return <FullScreenLoader />;
+  // Handle SSO callback (OAuth redirect) - skip splash for this
+  if (window.location.pathname === '/sso-callback') {
+    // Hide HTML splash immediately for SSO
+    document.getElementById('native-splash')?.classList.add('hiding');
+    return <SSOCallback />;
+  }
+
+  // Determine if app is fully ready
+  // For logged-out users: just need Clerk to load
+  // For logged-in users: need Clerk + Convex data
+  const isAppReady = clerkLoaded && (!user || (logsLoaded && planLoaded && profileLoaded));
+
+  // Debug: Log loading states (remove in production)
+  useEffect(() => {
+    console.log('[App] Loading states:',
+      'clerkLoaded:', clerkLoaded,
+      '| user:', !!user,
+      '| logsLoaded:', logsLoaded,
+      '| planLoaded:', planLoaded,
+      '| profileLoaded:', profileLoaded,
+      '| isAppReady:', isAppReady
+    );
+  }, [clerkLoaded, user, logsLoaded, planLoaded, profileLoaded, isAppReady]);
+
+  // Hide the HTML splash when app is ready
+  useEffect(() => {
+    if (!showSplash) return; // Already hidden
+
+    if (isAppReady) {
+      console.log('[App] App ready, hiding splash');
+
+      // Minimum display time for branding (let animation complete)
+      const minTime = 1000;
+      const elapsed = performance.now();
+      const remaining = Math.max(0, minTime - elapsed);
+
+      const hideTimer = setTimeout(() => {
+        const splash = document.getElementById('native-splash');
+        if (splash) {
+          splash.classList.add('hiding');
+          setTimeout(() => {
+            splash.remove();
+            setShowSplash(false);
+          }, 400);
+        } else {
+          setShowSplash(false);
+        }
+      }, remaining);
+
+      return () => clearTimeout(hideTimer);
+    }
+
+    // Timeout fallback - never stay stuck on splash more than 5 seconds
+    const timeout = setTimeout(() => {
+      console.warn('Splash timeout - forcing app to show');
+      const splash = document.getElementById('native-splash');
+      if (splash) {
+        splash.classList.add('hiding');
+        setTimeout(() => {
+          splash.remove();
+          setShowSplash(false);
+        }, 400);
+      } else {
+        setShowSplash(false);
+      }
+    }, 5000);
+
+    return () => clearTimeout(timeout);
+  }, [isAppReady, showSplash]);
+
+  // While splash is showing, return null (HTML splash is visible)
+  if (showSplash) {
+    return null;
+  }
+
+  // If data still loading after splash dismissed, show loader
+  if (!isAppReady) {
+    return <FullScreenLoader />;
+  }
+
+  // Show legal pages (accessible without login)
+  if (currentPage === 'privacy') {
+    return <PrivacyPolicyPage onBack={() => setCurrentPage('home')} />;
+  }
+  if (currentPage === 'terms') {
+    return <TermsOfServicePage onBack={() => setCurrentPage('home')} />;
   }
 
   // Not logged in flow: Landing → Auth
   if (!user) {
       if (!showAuth) {
-        return <LandingPage onGetStarted={handleGetStarted} onSignIn={handleSignIn} />;
+        return (
+          <LandingPage
+            onGetStarted={handleGetStarted}
+            onSignIn={handleSignIn}
+            onPrivacy={() => setCurrentPage('privacy')}
+            onTerms={() => setCurrentPage('terms')}
+          />
+        );
       }
       return <AuthPage />;
   }
@@ -603,16 +773,21 @@ export default function App() {
       {/* Offline Indicator */}
       <OfflineIndicator />
 
-      <div className="min-h-screen w-full flex flex-col items-center selection:bg-[var(--accent-light)] selection:text-[var(--accent)] overflow-y-auto">
+      {/* Page container with swipe animation - NO SCROLL here, pages handle their own scroll */}
+      <div
+        className="h-screen w-full flex flex-col items-center selection:bg-[var(--accent-light)] selection:text-[var(--accent)] overflow-hidden"
+        style={swipeEnabled ? swipeStyle : undefined}
+      >
         {renderPage()}
       </div>
 
+      {/* Fixed elements - navbar and chat button stay in place during swipe */}
       {!activeSession && !pendingSession && !sessionToSummarize && (
         <>
             {activePlan && (
                 <>
-                    <Navbar 
-                        currentPage={currentPage} 
+                    <Navbar
+                        currentPage={currentPage}
                         onNavigate={setCurrentPage}
                         onToggleTheme={toggleTheme}
                         theme={theme}

@@ -182,7 +182,7 @@ export default function SessionTracker({ session, onFinish, onCancel, allLogs, o
     }
   }, [currentExercise, lastPerformance, currentInputData]);
 
-  const handleInputChange = useCallback((field: 'weight' | 'reps', value: string) => {
+  const handleInputChange = useCallback((field: 'weight' | 'reps' | 'duration' | 'distance', value: string) => {
     if (!currentExercise) return;
 
     setCurrentInputData(prev => ({
@@ -193,6 +193,19 @@ export default function SessionTracker({ session, onFinish, onCancel, allLogs, o
       }
     }));
   }, [currentExercise]);
+
+  // Check if current exercise is time-based (cardio/intervals)
+  const isTimeBased = useCallback((exercise: PlanExercise | null): boolean => {
+    if (!exercise?.metrics_template) {
+      const name = exercise?.exercise_name?.toLowerCase() || '';
+      return name.includes('interval') || name.includes('cardio') ||
+             name.includes('treadmill') || name.includes('bike') ||
+             name.includes('row') || name.includes('plank') ||
+             name.includes('hold') || name.includes('stretch');
+    }
+    return exercise.metrics_template.type === 'duration_only' ||
+           exercise.metrics_template.type === 'sets_duration';
+  }, []);
 
   const trackExercisePerformance = async (exercise: PlanExercise, completed: boolean = true, skipped: boolean = false) => {
     if (!userId || !exercise) return;
@@ -258,7 +271,40 @@ export default function SessionTracker({ session, onFinish, onCancel, allLogs, o
   const handleCompleteSet = useCallback(() => {
     if (!currentExercise) return;
 
-    const input = currentInputData[currentExercise.exercise_name];
+    const input = currentInputData[currentExercise.exercise_name] || {};
+
+    // Handle time-based exercises (cardio, intervals, holds)
+    if (isTimeBased(currentExercise)) {
+      haptic.success();
+      setJustCompletedSet(true);
+      setTimeout(() => setJustCompletedSet(false), 600);
+
+      // Log as completed with duration (weight=0, reps=1 as placeholder)
+      const newSet: LoggedSetSRW = {
+        set: currentRound,
+        weight: 0,
+        reps: 1, // 1 means "completed"
+        rpe: input.rpe ?? null,
+      };
+
+      setLoggedData(prev => ({
+        ...prev,
+        [currentExercise.exercise_name]: [...(prev[currentExercise.exercise_name] || []), newSet]
+      }));
+
+      ariaAnnouncer.announce(t('session.exerciseComplete', { exercise: currentExercise.exercise_name }), 'assertive');
+
+      if (currentBlock.type === 'superset') {
+        handleSupersetLogic();
+      } else if (currentBlock.type === 'amrap') {
+        handleAmrapLogic();
+      } else {
+        handleSingleExerciseLogic();
+      }
+      return;
+    }
+
+    // Standard strength exercise validation
     if (!input?.weight || !input?.reps) {
       notify({ type: 'error', message: t('session.enterWeightAndReps') });
       return;
@@ -333,7 +379,7 @@ export default function SessionTracker({ session, onFinish, onCancel, allLogs, o
     } else {
       handleSingleExerciseLogic();
     }
-  }, [currentExercise, currentInputData, currentBlock, currentRound, haptic, t, allLogs, celebratedPRs]);
+  }, [currentExercise, currentInputData, currentBlock, currentRound, haptic, t, allLogs, celebratedPRs, isTimeBased]);
 
   const handleSupersetLogic = () => {
     const block = currentBlock as SupersetBlock;
@@ -542,7 +588,7 @@ export default function SessionTracker({ session, onFinish, onCancel, allLogs, o
 
   // MAIN EXERCISE TRACKING SCREEN
   return (
-    <div className="min-h-screen w-full max-w-lg mx-auto flex flex-col bg-[var(--bg-primary)]">
+    <div className="h-screen w-full max-w-lg mx-auto flex flex-col bg-[var(--bg-primary)] overflow-hidden">
       <SessionHeader
         progress={progress}
         currentExerciseGlobalIndex={currentExerciseGlobalIndex}
@@ -560,7 +606,10 @@ export default function SessionTracker({ session, onFinish, onCancel, allLogs, o
         onToggleExerciseList={() => setShowExerciseList(!showExerciseList)}
       />
 
-      <div className="flex-1 flex flex-col px-[var(--space-3)] py-[var(--space-3)] animate-fade-in">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto flex flex-col px-[var(--space-3)] py-[var(--space-3)] animate-fade-in"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
         <ExerciseCard
           currentExercise={currentExercise}
           currentBlock={currentBlock}
@@ -580,20 +629,28 @@ export default function SessionTracker({ session, onFinish, onCancel, allLogs, o
           />
         )}
 
-        {lastPerformance && currentRound > 1 && (
+        {/* Smart Suggestions - show on ALL sets if we have history (not just round > 1) */}
+        {lastPerformance && !isTimeBased(currentExercise) && (
           <SmartSuggestions
             lastWeight={lastPerformance.weight}
             lastReps={lastPerformance.reps}
+            currentRound={currentRound}
             onRepeatLast={() => {
-              const input = currentInputData[currentExercise.exercise_name];
-              if (input?.weight && input?.reps) {
-                handleCompleteSet();
-              }
+              // Fill in the values and complete
+              setCurrentInputData(prev => ({
+                ...prev,
+                [currentExercise.exercise_name]: {
+                  weight: String(lastPerformance.weight),
+                  reps: String(lastPerformance.reps)
+                }
+              }));
+              // Small delay to let state update, then complete
+              setTimeout(() => handleCompleteSet(), 50);
             }}
             onProgressiveOverload={(weight, reps) => {
               setCurrentInputData(prev => ({
                 ...prev,
-                [currentExercise.exercise_name]: { weight, reps }
+                [currentExercise.exercise_name]: { weight: String(weight), reps: String(reps) }
               }));
             }}
           />
@@ -603,6 +660,8 @@ export default function SessionTracker({ session, onFinish, onCancel, allLogs, o
           exerciseName={currentExercise.exercise_name}
           currentInputData={currentInputData[currentExercise.exercise_name] || {}}
           onInputChange={handleInputChange}
+          metricsTemplate={currentExercise.metrics_template}
+          onComplete={handleCompleteSet}
         />
 
         {/* Next Exercise Preview (for supersets) */}

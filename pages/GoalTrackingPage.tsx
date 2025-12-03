@@ -188,7 +188,7 @@ export default function GoalTrackingPage({ logs, plan, userGoals, onDeleteLog }:
       className={cn(
         'w-full max-w-lg mx-auto',
         'px-[var(--space-4)]',
-        'pt-[max(var(--space-4),env(safe-area-inset-top))]',
+        'pt-[env(safe-area-inset-top)]', // Tight to Dynamic Island
         'pb-[calc(var(--height-tab-bar)+var(--space-6)+env(safe-area-inset-bottom))]',
         'animate-fade-in',
         'flex-1'

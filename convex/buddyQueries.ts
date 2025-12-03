@@ -1,8 +1,10 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
+import { isAuthenticatedUser } from "./utils/accessControl";
 
 /**
  * Get shared plan by code
+ * NOTE: Share codes are intentionally public-access (anyone with code can view)
  */
 export const getSharedPlan = query({
   args: {
@@ -42,6 +44,11 @@ export const getWorkoutBuddies = query({
     userId: v.string()
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user (returns empty if not auth'd)
+    if (!await isAuthenticatedUser(ctx, args.userId)) {
+      return [];
+    }
+
     const buddies = await ctx.db
       .query("workoutBuddies")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -88,13 +95,20 @@ export const getWorkoutBuddies = query({
 
 /**
  * Compare PRs with a buddy
+ * Can optionally filter to specific exercises (e.g., today's workout)
  */
 export const getBuddyPRComparison = query({
   args: {
     userId: v.string(),
-    buddyId: v.string()
+    buddyId: v.string(),
+    exerciseFilter: v.optional(v.array(v.string())), // Optional: only show PRs for these exercises
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user (returns empty if not auth'd)
+    if (!await isAuthenticatedUser(ctx, args.userId)) {
+      return { allowed: false, prs: [], comparisons: [] };
+    }
+
     // Get settings first
     const settings = await ctx.db
       .query("buddySettings")
@@ -102,20 +116,22 @@ export const getBuddyPRComparison = query({
       .first();
 
     if (!settings?.showPRs) {
-      return { allowed: false, prs: [] };
+      return { allowed: false, prs: [], comparisons: [] };
     }
 
-    // Get user's logs
+    // Get user's logs (limit to recent 200 for performance)
     const userLogs = await ctx.db
       .query("workoutLogs")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .collect();
+      .order("desc")
+      .take(200);
 
-    // Get buddy's logs
+    // Get buddy's logs (limit to recent 200 for performance)
     const buddyLogs = await ctx.db
       .query("workoutLogs")
       .withIndex("by_userId", (q) => q.eq("userId", args.buddyId))
-      .collect();
+      .order("desc")
+      .take(200);
 
     // Calculate PRs for common exercises
     const exerciseMap = new Map<string, {
@@ -165,6 +181,14 @@ export const getBuddyPRComparison = query({
       });
     });
 
+    // Normalize exercise names for comparison (lowercase, trim)
+    const normalizeExercise = (name: string) => name.toLowerCase().trim();
+
+    // Create filter set if provided and not empty
+    const filterSet = args.exerciseFilter && args.exerciseFilter.length > 0
+      ? new Set(args.exerciseFilter.map(normalizeExercise))
+      : null;
+
     // Convert to array
     const comparisons = Array.from(exerciseMap.entries())
       .map(([exercise, prs]) => ({
@@ -173,6 +197,13 @@ export const getBuddyPRComparison = query({
         buddyPR: prs.buddyPR
       }))
       .filter(c => c.userPR && c.buddyPR) // Only show exercises both have done
+      .filter(c => {
+        // If filter provided, only include exercises in the filter
+        if (filterSet) {
+          return filterSet.has(normalizeExercise(c.exercise));
+        }
+        return true; // No filter = show all
+      })
       .sort((a, b) => {
         // Sort by total volume (weight × reps)
         const aVol = (a.userPR!.weight * a.userPR!.reps) + (a.buddyPR!.weight * a.buddyPR!.reps);
@@ -182,7 +213,8 @@ export const getBuddyPRComparison = query({
 
     return {
       allowed: true,
-      comparisons
+      comparisons,
+      filteredByDay: !!(args.exerciseFilter && args.exerciseFilter.length > 0), // Let UI know if results are filtered
     };
   },
 });
@@ -196,6 +228,11 @@ export const getBuddyNotifications = query({
     userId: v.string()
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user (returns empty if not auth'd)
+    if (!await isAuthenticatedUser(ctx, args.userId)) {
+      return [];
+    }
+
     const notifications = await ctx.db
       .query("buddyNotifications")
       .withIndex("by_userId_read", (q) => q.eq("userId", args.userId).eq("read", false))
@@ -241,6 +278,11 @@ export const getBuddyRecentWorkouts = query({
     limit: v.optional(v.number())
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user (returns empty if not auth'd)
+    if (!await isAuthenticatedUser(ctx, args.userId)) {
+      return { allowed: false, workouts: [] };
+    }
+
     // Check if sharing enabled
     const settings = await ctx.db
       .query("buddySettings")

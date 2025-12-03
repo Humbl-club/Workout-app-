@@ -68,7 +68,7 @@ export default function WarmupScreen({
   const haptic = useHaptic();
 
   return (
-    <div className="min-h-screen w-full max-w-lg mx-auto flex flex-col bg-[var(--bg-primary)]">
+    <div className="h-screen w-full max-w-lg mx-auto flex flex-col bg-[var(--bg-primary)] overflow-hidden">
       {/* Progress Bar */}
       <div className="sticky top-0 z-[var(--z-sticky)] bg-[var(--bg-primary)] border-b border-[var(--border-subtle)]">
         <div className="px-[var(--space-3)] py-[var(--space-2)] flex items-center justify-between">
@@ -119,7 +119,10 @@ export default function WarmupScreen({
       </div>
 
       {/* Warmup Content */}
-      <div className="flex-1 flex flex-col px-[var(--space-3)] py-[var(--space-3)] animate-fade-in">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto flex flex-col px-[var(--space-3)] py-[var(--space-3)] animate-fade-in"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
         <div className="mb-[var(--space-4)] text-center">
           <div className="inline-flex items-center gap-[var(--space-2)] mb-[var(--space-2)]">
             <FlameIcon className="w-6 h-6 text-[var(--status-warning-bg)]" />

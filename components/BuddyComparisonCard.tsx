@@ -9,12 +9,20 @@ interface BuddyComparisonCardProps {
   userId: string;
   buddyId: string;
   buddyName?: string;
+  /** Optional: Filter to only these exercises (e.g., today's workout exercises) */
+  exerciseFilter?: string[];
 }
 
-export default function BuddyComparisonCard({ userId, buddyId, buddyName = "Buddy" }: BuddyComparisonCardProps) {
+export default function BuddyComparisonCard({
+  userId,
+  buddyId,
+  buddyName = "Buddy",
+  exerciseFilter
+}: BuddyComparisonCardProps) {
   const comparison = useQuery(api.buddyQueries.getBuddyPRComparison, {
     userId,
-    buddyId
+    buddyId,
+    exerciseFilter: exerciseFilter && exerciseFilter.length > 0 ? exerciseFilter : undefined,
   });
 
   if (!comparison?.allowed) {
@@ -34,7 +42,9 @@ export default function BuddyComparisonCard({ userId, buddyId, buddyName = "Budd
       <Card>
         <CardContent className="p-6 text-center">
           <p className="text-[14px] text-[var(--text-secondary)]">
-            No common exercises yet. Start working out together!
+            {comparison.filteredByDay
+              ? "No matching PRs for today's exercises yet"
+              : "No common exercises yet. Start working out together!"}
           </p>
         </CardContent>
       </Card>

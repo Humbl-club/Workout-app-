@@ -8,6 +8,7 @@ import {
   MAX_REPS,
   MIN_REPS,
 } from "./utils/constants";
+import { verifyAuthenticatedUser, verifyAdmin } from "./utils/accessControl";
 
 // Ensure user exists - creates user if doesn't exist (called on sign-in)
 export const ensureUserExists = mutation({
@@ -15,6 +16,10 @@ export const ensureUserExists = mutation({
     userId: v.string(),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify the caller is the user they claim to be
+    // This is called on first login, so we verify auth matches userId
+    await verifyAuthenticatedUser(ctx, args.userId);
+
     const user = await ctx.db
       .query("users")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -37,7 +42,7 @@ export const ensureUserExists = mutation({
   },
 });
 
-// Upsert sex-specific guideline
+// Upsert sex-specific guideline (ADMIN ONLY)
 export const upsertSexSpecificGuideline = mutation({
   args: {
     sex: v.union(v.literal("male"), v.literal("female"), v.literal("other"), v.literal("neutral")),
@@ -51,6 +56,9 @@ export const upsertSexSpecificGuideline = mutation({
     last_reviewed: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Admin-only mutation
+    await verifyAdmin(ctx);
+
     const goalValue = args.goal ?? null;
     const experienceValue = args.experience ?? null;
     
@@ -87,7 +95,7 @@ export const upsertSexSpecificGuideline = mutation({
   },
 });
 
-// Upsert sport guideline
+// Upsert sport guideline (ADMIN ONLY)
 export const upsertSportGuideline = mutation({
   args: {
     sport: v.string(),
@@ -102,9 +110,12 @@ export const upsertSportGuideline = mutation({
     last_reviewed: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Admin-only mutation
+    await verifyAdmin(ctx);
+
     const goalValue = args.goal ?? null;
     const experienceValue = args.experience ?? null;
-    
+
     // Find existing record by unique key (sport, goal, experience)
     const candidates = await ctx.db
       .query("sportGuidelines")
@@ -139,7 +150,7 @@ export const upsertSportGuideline = mutation({
   },
 });
 
-// Upsert body-context guideline
+// Upsert body-context guideline (ADMIN ONLY)
 export const upsertBodyContextGuideline = mutation({
   args: {
     band: v.string(),
@@ -153,6 +164,9 @@ export const upsertBodyContextGuideline = mutation({
     last_reviewed: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Admin-only mutation
+    await verifyAdmin(ctx);
+
     const athleticLevelValue = args.athletic_level ?? null;
     const bodyTypeValue = args.body_type ?? null;
     
@@ -201,6 +215,9 @@ export const updateUserProfile = mutation({
     injuryProfile: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user
+    await verifyAuthenticatedUser(ctx, args.userId);
+
     const userId = args.userId;
     const user = await ctx.db
       .query("users")
@@ -259,6 +276,9 @@ export const updateInjuryProfile = mutation({
     }),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user
+    await verifyAuthenticatedUser(ctx, args.userId);
+
     const user = await ctx.db
       .query("users")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -283,6 +303,9 @@ export const createWorkoutPlan = mutation({
     dailyRoutine: v.optional(v.union(v.any(), v.null())),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user
+    await verifyAuthenticatedUser(ctx, args.userId);
+
     const userId = args.userId;
 
     // Helper function to normalize a single exercise
@@ -707,6 +730,9 @@ export const deleteWorkoutPlan = mutation({
     planId: v.id("workoutPlans"),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user
+    await verifyAuthenticatedUser(ctx, args.userId);
+
     const userId = args.userId;
     const plan = await ctx.db.get(args.planId);
 
@@ -757,6 +783,9 @@ export const setActivePlan = mutation({
     planId: v.id("workoutPlans"),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user
+    await verifyAuthenticatedUser(ctx, args.userId);
+
     const userId = args.userId;
     const plan = await ctx.db.get(args.planId);
 
@@ -786,6 +815,9 @@ export const addWorkoutLog = mutation({
     durationMinutes: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user
+    await verifyAuthenticatedUser(ctx, args.userId);
+
     const userId = args.userId;
 
     await ctx.db.insert("workoutLogs", {
@@ -834,6 +866,9 @@ export const saveExerciseHistory = mutation({
     reps: v.number(),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user
+    await verifyAuthenticatedUser(ctx, args.userId);
+
     // INPUT VALIDATION
     if (!args.exerciseName || !args.exerciseName.trim()) {
       throw new Error("Exercise name cannot be empty");

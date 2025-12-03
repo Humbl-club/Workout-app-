@@ -113,7 +113,7 @@ export default function Navbar({ currentPage, onNavigate }: NavbarProps) {
 
     return (
         <nav
-            className="fixed bottom-0 left-0 right-0 z-20 px-3 pb-[calc(0.375rem+env(safe-area-inset-bottom))]"
+            className="fixed bottom-0 left-0 right-0 z-20 px-3 pb-[env(safe-area-inset-bottom)]"
             role="navigation"
             aria-label="Main navigation"
         >

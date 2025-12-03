@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { useUser } from '@clerk/clerk-react';
 import { api } from '../convex/_generated/api';
@@ -13,12 +13,13 @@ import { cn } from '../lib/utils';
 import { analytics, EventTypes } from '../services/analyticsService';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '../components/ui/PullToRefreshIndicator';
+import useWorkoutPlan from '../hooks/useWorkoutPlan';
 
 /* ═══════════════════════════════════════════════════════════════
    BUDDIES PAGE - Phase 9.4 Page Redesign
 
    Social features and workout buddy management.
-   Uses design tokens for consistent styling.
+   PR comparisons filtered to today's workout exercises.
    ═══════════════════════════════════════════════════════════════ */
 
 export default function BuddiesPage() {
@@ -27,6 +28,52 @@ export default function BuddiesPage() {
 
   const [showEnterCode, setShowEnterCode] = useState(false);
   const [selectedBuddy, setSelectedBuddy] = useState<string | null>(null);
+
+  // Get user's workout plan to filter PRs by today's exercises
+  const { activePlan } = useWorkoutPlan();
+
+  // Extract today's main exercises (blocks 2, 3, 4 = main work, not warmup/cooldown)
+  const todaysExercises = useMemo(() => {
+    if (!activePlan?.weeklyPlan) return [];
+
+    const today = new Date().getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const todayPlan = activePlan.weeklyPlan.find(d => d.day_of_week === today);
+
+    if (!todayPlan) return [];
+
+    const exercises: string[] = [];
+
+    // Extract from blocks (single-session days)
+    if (todayPlan.blocks) {
+      todayPlan.blocks.forEach((block, idx) => {
+        // Skip first block (usually warmup) - only main work
+        if (idx > 0 && block.exercises) {
+          block.exercises.forEach(ex => {
+            if (ex.category === 'main') {
+              exercises.push(ex.exercise_name);
+            }
+          });
+        }
+      });
+    }
+
+    // Extract from sessions (2x daily structure)
+    if (todayPlan.sessions) {
+      todayPlan.sessions.forEach(session => {
+        session.blocks.forEach((block, idx) => {
+          if (idx > 0 && block.exercises) {
+            block.exercises.forEach(ex => {
+              if (ex.category === 'main') {
+                exercises.push(ex.exercise_name);
+              }
+            });
+          }
+        });
+      });
+    }
+
+    return exercises;
+  }, [activePlan]);
 
   // Pull-to-refresh
   const handleRefresh = async () => {
@@ -92,15 +139,15 @@ export default function BuddiesPage() {
       <div
         className={cn(
           'w-full max-w-lg mx-auto',
+          'h-full', // Fill available height
+          'flex flex-col', // Flex column for header + scrollable main
           'px-[var(--space-4)]',
-          'pt-[max(var(--space-4),env(safe-area-inset-top))]',
-          'pb-[calc(var(--height-tab-bar)+var(--space-6)+env(safe-area-inset-bottom))]',
-          'animate-fade-in',
-          'flex-1'
+          'pt-[env(safe-area-inset-top)]', // Tight to Dynamic Island
+          'animate-fade-in'
         )}
       >
-      {/* Header */}
-      <header className="mb-[var(--space-5)]">
+      {/* Header - Fixed at top */}
+      <header className="flex-shrink-0 mb-[var(--space-4)]">
         <div
           className={cn(
             'flex items-center justify-between',
@@ -152,7 +199,19 @@ export default function BuddiesPage() {
         </div>
       </header>
 
-      <main className="space-y-[var(--space-4)]">
+      {/* Main content - Scrollable */}
+      <main
+        className={cn(
+          'flex-1 min-h-0', // Critical for flex children to scroll
+          'overflow-y-auto overflow-x-hidden',
+          'space-y-[var(--space-4)]',
+          'pb-[calc(var(--height-tab-bar)+env(safe-area-inset-bottom)+80px)]', // Extra space to scroll above navbar
+          '-mx-[var(--space-4)] px-[var(--space-4)]' // Extend scroll area to edges
+        )}
+        style={{
+          WebkitOverflowScrolling: 'touch' // iOS momentum scrolling
+        }}
+      >
         {/* Empty State */}
         {(!buddies || buddies.length === 0) && (
           <Card className="text-center py-[var(--space-8)]">
@@ -319,7 +378,7 @@ export default function BuddiesPage() {
                       Buddy {i + 1}
                     </h3>
 
-                    {/* PR Comparison */}
+                    {/* PR Comparison - Filtered to today's exercises */}
                     <div className="mb-[var(--space-4)]">
                       <p
                         className={cn(
@@ -331,12 +390,13 @@ export default function BuddiesPage() {
                           'uppercase tracking-[var(--tracking-wider)]'
                         )}
                       >
-                        PR Comparison
+                        {todaysExercises.length > 0 ? "Today's PR Comparison" : "PR Comparison"}
                       </p>
                       <BuddyComparisonCard
                         userId={userId!}
                         buddyId={buddy.buddyId}
                         buddyName={`Buddy ${i + 1}`}
+                        exerciseFilter={todaysExercises.length > 0 ? todaysExercises : undefined}
                       />
                     </div>
 

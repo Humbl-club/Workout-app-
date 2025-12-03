@@ -180,11 +180,13 @@ export default function ProfilePage({ logs, userProfile, onUpdateProfile, onCrea
       <div
         className={cn(
           'w-full max-w-lg mx-auto',
+          'h-full overflow-y-auto', // Enable scrolling
           'px-[var(--space-4)]',
-          'pt-[max(var(--space-4),env(safe-area-inset-top))]',
-          'pb-[calc(var(--height-tab-bar)+var(--space-6)+env(safe-area-inset-bottom))]',
-          'animate-fade-in flex-1'
+          'pt-[env(safe-area-inset-top)]', // Tight to Dynamic Island
+          'pb-[calc(var(--height-tab-bar)+var(--space-6)+env(safe-area-inset-bottom)+60px)]', // Extra padding for navbar
+          'animate-fade-in'
         )}
+        style={{ WebkitOverflowScrolling: 'touch' }}
       >
       <header className="mb-[var(--space-4)]">
         <div className="flex items-center justify-between mb-[var(--space-2)]">

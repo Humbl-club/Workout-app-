@@ -113,7 +113,11 @@ html {
 
 html, body {
   overscroll-behavior: none;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 body {
@@ -122,7 +126,6 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: var(--leading-normal);
-  touch-action: pan-y;
 }
 
 /* Dark mode body - pure black for OLED */
@@ -137,13 +140,7 @@ body {
   background-attachment: fixed;
 }
 
-/* Safe area padding on body */
-@supports (padding: max(0px)) {
-  body {
-    padding-left: var(--safe-left);
-    padding-right: var(--safe-right);
-  }
-}
+/* Safe areas handled by individual components, not body */
 
 /* Typography defaults */
 h1, h2, h3, h4, h5, h6,

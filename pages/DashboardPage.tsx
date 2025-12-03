@@ -293,7 +293,7 @@ export default function DashboardPage({ logs, plan }: DashboardPageProps) {
       className={cn(
         'w-full max-w-2xl mx-auto',
         'px-[var(--space-5)]',
-        'pt-[max(var(--space-6),env(safe-area-inset-top))]',
+        'pt-[env(safe-area-inset-top)]', // Tight to Dynamic Island
         'pb-[calc(var(--height-tab-bar)+var(--space-6)+env(safe-area-inset-bottom))]',
         'animate-fade-in',
         'flex-1'

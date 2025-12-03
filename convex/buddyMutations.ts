@@ -346,3 +346,4 @@ export const removeBuddy = mutation({
     return { success: true };
   },
 });
+

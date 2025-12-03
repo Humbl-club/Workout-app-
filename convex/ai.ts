@@ -706,6 +706,50 @@ export const generateWorkoutPlan = action({
     // Build periodization prompt if user has a target date
     const periodizationPrompt = formatPeriodizationPrompt(specific_goal);
 
+    // ═══════════════════════════════════════════════════════════
+    // INTELLIGENT PROGRESSION: Fetch workout history for context
+    // ═══════════════════════════════════════════════════════════
+    let workoutHistoryPrompt = '';
+    if (args.userId) {
+      try {
+        const progressionSummary = await ctx.runQuery(api.queries.getWorkoutProgressionSummary, {
+          userId: args.userId,
+          weeksToAnalyze: 4,
+        });
+
+        if (progressionSummary.hasData) {
+          const strengthData = progressionSummary.strongestLifts
+            .map(l => `${l.exerciseName}: ${l.maxWeight}kg × ${l.maxReps}`)
+            .join(', ');
+
+          const progressData = progressionSummary.exerciseProgress
+            .filter(e => e.trend === 'increasing')
+            .slice(0, 5)
+            .map(e => `${e.exerciseName} (+${e.weightChange}kg)`)
+            .join(', ');
+
+          workoutHistoryPrompt = `
+**WORKOUT HISTORY (Past 4 Weeks) - USE THIS FOR INTELLIGENT PROGRAMMING:**
+${progressionSummary.summary}
+
+${strengthData ? `**Current Strength Levels:** ${strengthData}` : ''}
+${progressData ? `**Exercises Showing Progress:** ${progressData}` : ''}
+
+**PROGRESSION GUIDANCE:**
+- For exercises the user has done before, set target weights SLIGHTLY ABOVE their current max (2-5% increase)
+- For new exercises, use conservative starting weights based on their demonstrated strength
+- User's workout frequency: ${progressionSummary.avgWorkoutsPerWeek} sessions/week
+- Total workouts analyzed: ${progressionSummary.totalWorkouts}
+
+Example: If user benched 80kg last week, suggest 82.5kg this week with same reps.
+`;
+          loggers.ai.info(`📊 Workout history loaded: ${progressionSummary.totalWorkouts} workouts, ${progressionSummary.exerciseProgress.length} exercises tracked`);
+        }
+      } catch (error) {
+        loggers.ai.warn('Could not fetch workout history for progression:', error);
+      }
+    }
+
     // Get session length guidance from unified schema
     const sessionLengthPrompt = preferred_session_length
       ? getSessionLengthGuidance(preferred_session_length as SessionLength)
@@ -755,6 +799,7 @@ ${heartRateGuidancePrompt}
 ${trainingSplitPrompt}
 ${periodizationPrompt}
 ${exerciseHierarchyPrompt}
+${workoutHistoryPrompt}
 ${CARDIO_PARSING_RULES}
 
 ${metricsTemplatePrompt}

@@ -9,16 +9,16 @@ type NewLog = Omit<WorkoutLog, 'id' | 'date'>;
 export default function useWorkoutLogs() {
     const { user } = useUser();
     const userId = user?.id || null;
-    
-    const logs = useQuery(
+
+    const logsResult = useQuery(
         api.queries.getWorkoutLogs,
-        userId ? { userId } : "skip"
+        userId ? { userId, limit: 100 } : "skip" // Fetch up to 100 logs
     );
     const addLogMutation = useMutation(api.mutations.addWorkoutLog);
 
     const addLog = async (newLog: NewLog) => {
         if (!userId) return;
-        
+
         try {
             await addLogMutation({
                 userId,
@@ -31,8 +31,12 @@ export default function useWorkoutLogs() {
         }
     };
 
+    // Handle paginated result from Convex
+    // The query returns { page: [...], isDone: boolean, continueCursor: string }
+    const rawLogs = logsResult?.page || logsResult || [];
+
     // Convert Convex logs to WorkoutLog format
-    const formattedLogs: WorkoutLog[] = logs && Array.isArray(logs) ? logs.map(log => ({
+    const formattedLogs: WorkoutLog[] = Array.isArray(rawLogs) ? rawLogs.map((log: any) => ({
         id: log._id,
         date: log.date,
         focus: log.focus,
@@ -40,11 +44,11 @@ export default function useWorkoutLogs() {
         durationMinutes: log.durationMinutes || undefined,
     })) : [];
 
-    const logsLoaded = logs !== undefined || !userId;
+    const logsLoaded = logsResult !== undefined || !userId;
 
-    return { 
-        logs: formattedLogs, 
-        addLog, 
-        logsLoaded 
+    return {
+        logs: formattedLogs,
+        addLog,
+        logsLoaded
     };
 }

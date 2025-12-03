@@ -1,0 +1,20 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background with subtle gradient -->
+  <rect width="1024" height="1024" fill="#0A0A0A"/>
+
+  <!-- Subtle radial glow behind text -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+      <stop offset="0%" stop-color="#E07A5F" stop-opacity="0.15"/>
+      <stop offset="70%" stop-color="#E07A5F" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="512" cy="512" r="400" fill="url(#glow)"/>
+
+  <!-- REBLD Logo Text -->
+  <!-- RE in white -->
+  <text x="280" y="560" font-family="-apple-system, SF Pro Display, system-ui, sans-serif" font-size="200" font-weight="800" letter-spacing="-4" fill="#FFFFFF">RE</text>
+
+  <!-- BLD in coral -->
+  <text x="500" y="560" font-family="-apple-system, SF Pro Display, system-ui, sans-serif" font-size="200" font-weight="800" letter-spacing="-4" fill="#E07A5F">BLD</text>
+</svg>

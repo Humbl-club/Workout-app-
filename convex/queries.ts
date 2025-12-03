@@ -1,6 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
-import { verifyAdmin } from "./utils/accessControl";
+import { verifyAdmin, isAuthenticatedUser } from "./utils/accessControl";
 
 // Get user profile
 export const getUserProfile = query({
@@ -452,6 +452,11 @@ export const getUserExercisePreferences = query({
     exerciseName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user (returns null if not auth'd)
+    if (!await isAuthenticatedUser(ctx, args.userId)) {
+      return null;
+    }
+
     if (args.exerciseName) {
       const normalized = args.exerciseName.toLowerCase().trim().replace(/\s+/g, "_");
       const preference = await ctx.db
@@ -479,6 +484,11 @@ export const getUserExerciseAnalytics = query({
     exerciseName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify userId matches authenticated user (returns null if not auth'd)
+    if (!await isAuthenticatedUser(ctx, args.userId)) {
+      return null;
+    }
+
     if (args.exerciseName) {
       const normalized = args.exerciseName.toLowerCase().trim().replace(/\s+/g, "_");
       const analytics = await ctx.db
@@ -595,6 +605,11 @@ export const getExercisePerformance = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    // SECURITY: Verify user_id matches authenticated user (returns empty if not auth'd)
+    if (!await isAuthenticatedUser(ctx, args.user_id)) {
+      return [];
+    }
+
     let performance;
     
     if (args.exercise_name && args.sport_context) {
@@ -832,5 +847,157 @@ export const getExercisesWithoutSteps = query({
     );
 
     return withoutSteps.slice(0, limit);
+  },
+});
+
+/**
+ * Get workout performance summary for AI progression recommendations
+ * Returns aggregated data about recent workouts to inform intelligent weight suggestions
+ */
+export const getWorkoutProgressionSummary = query({
+  args: {
+    userId: v.string(),
+    weeksToAnalyze: v.optional(v.number()), // Default 4 weeks
+  },
+  handler: async (ctx, args) => {
+    const weeks = args.weeksToAnalyze ?? 4;
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - weeks * 7);
+    const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
+
+    // Get recent workout logs
+    const logs = await ctx.db
+      .query("workoutLogs")
+      .withIndex("by_userId_date", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(50);
+
+    // Filter to only include logs within the analysis window
+    const recentLogs = logs.filter(log => log.date >= cutoffDateStr);
+
+    if (recentLogs.length === 0) {
+      return {
+        hasData: false,
+        totalWorkouts: 0,
+        exerciseProgress: [],
+        strongestLifts: [],
+        recentPRs: [],
+        avgWorkoutsPerWeek: 0,
+        summary: "No recent workout data available.",
+      };
+    }
+
+    // Aggregate exercise data
+    const exerciseMap = new Map<string, {
+      name: string;
+      performances: { weight: number; reps: number; date: string }[];
+      maxWeight: number;
+      maxReps: number;
+      totalSets: number;
+    }>();
+
+    for (const log of recentLogs) {
+      for (const exercise of (log.exercises || [])) {
+        const normalized = exercise.exercise_name.toLowerCase().replace(/\s+/g, '_');
+
+        if (!exerciseMap.has(normalized)) {
+          exerciseMap.set(normalized, {
+            name: exercise.exercise_name,
+            performances: [],
+            maxWeight: 0,
+            maxReps: 0,
+            totalSets: 0,
+          });
+        }
+
+        const data = exerciseMap.get(normalized)!;
+
+        for (const set of (exercise.sets || [])) {
+          // Handle weight-based sets (most common)
+          if ('weight' in set && 'reps' in set) {
+            const weight = typeof set.weight === 'number' ? set.weight : parseFloat(String(set.weight)) || 0;
+            const reps = typeof set.reps === 'number' ? set.reps : parseInt(String(set.reps)) || 0;
+
+            if (weight > 0 && reps > 0) {
+              data.performances.push({
+                weight,
+                reps,
+                date: log.date,
+              });
+              data.maxWeight = Math.max(data.maxWeight, weight);
+              data.maxReps = Math.max(data.maxReps, reps);
+            }
+            data.totalSets++;
+          }
+        }
+      }
+    }
+
+    // Calculate progression for each exercise
+    const exerciseProgress = Array.from(exerciseMap.entries())
+      .filter(([, data]) => data.performances.length >= 2)
+      .map(([normalized, data]) => {
+        const sorted = [...data.performances].sort((a, b) =>
+          new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+
+        const firstWeight = sorted[0].weight;
+        const lastWeight = sorted[sorted.length - 1].weight;
+        const weightChange = lastWeight - firstWeight;
+        const percentChange = firstWeight > 0
+          ? ((lastWeight - firstWeight) / firstWeight * 100).toFixed(1)
+          : "0";
+
+        return {
+          exerciseName: data.name,
+          normalizedName: normalized,
+          currentMaxWeight: data.maxWeight,
+          currentMaxReps: data.maxReps,
+          weightChange,
+          percentChange: parseFloat(percentChange),
+          totalSets: data.totalSets,
+          trend: weightChange > 0 ? 'increasing' : weightChange < 0 ? 'decreasing' : 'stable',
+        };
+      })
+      .sort((a, b) => b.totalSets - a.totalSets)
+      .slice(0, 20); // Top 20 most performed exercises
+
+    // Get strongest lifts (highest weight exercises)
+    const strongestLifts = Array.from(exerciseMap.entries())
+      .filter(([, data]) => data.maxWeight > 0)
+      .sort((a, b) => b[1].maxWeight - a[1].maxWeight)
+      .slice(0, 5)
+      .map(([, data]) => ({
+        exerciseName: data.name,
+        maxWeight: data.maxWeight,
+        maxReps: data.maxReps,
+      }));
+
+    // Calculate workout frequency
+    const avgWorkoutsPerWeek = (recentLogs.length / weeks).toFixed(1);
+
+    // Build summary string for AI context
+    const summaryParts: string[] = [];
+    summaryParts.push(`${recentLogs.length} workouts in past ${weeks} weeks (${avgWorkoutsPerWeek}/week avg).`);
+
+    if (strongestLifts.length > 0) {
+      const topLift = strongestLifts[0];
+      summaryParts.push(`Strongest lift: ${topLift.exerciseName} at ${topLift.maxWeight}kg.`);
+    }
+
+    const improving = exerciseProgress.filter(e => e.trend === 'increasing');
+    if (improving.length > 0) {
+      summaryParts.push(`Progressive overload achieved on ${improving.length} exercises.`);
+    }
+
+    return {
+      hasData: true,
+      totalWorkouts: recentLogs.length,
+      exerciseProgress,
+      strongestLifts,
+      recentPRs: [], // Could be enhanced to track actual PRs
+      avgWorkoutsPerWeek: parseFloat(avgWorkoutsPerWeek),
+      summary: summaryParts.join(' '),
+    };
   },
 });

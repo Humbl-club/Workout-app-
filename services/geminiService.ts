@@ -47,27 +47,32 @@ export const getModelForContext = (context: ModelContext): string => {
   }
 };
 
-// Resolve API key at runtime if available (e.g., from localStorage) or fall back to build-time env.
+/**
+ * SECURITY: API key resolution DEPRECATED
+ *
+ * All AI operations should go through Convex backend actions:
+ * - api.ai.generateWorkoutPlan
+ * - api.ai.parseWorkoutPlan
+ * - api.ai.explainExercise
+ * - api.ai.handleChatMessage
+ * - api.ai.analyzeBodyPhoto
+ *
+ * This function returns undefined in production to force backend usage.
+ * Only returns a key in development/scripts that explicitly set it.
+ */
 const getApiKey = (): string | undefined => {
-  // Prefer build-time env (from .env.local via Vite) for consistency.
-  // IMPORTANT: use the exact literal `process.env.API_KEY` so Vite define() replaces it.
-  const inline = (process.env.API_KEY as unknown) as string | undefined;
-  if (inline && typeof inline === 'string') return inline;
-  // Also check an alternate define and Vite-style env, if present
-  const inlineAlt = (process.env.GEMINI_API_KEY as unknown) as string | undefined;
-  if (inlineAlt && typeof inlineAlt === 'string') return inlineAlt;
-  // @ts-ignore - during build we may have this literal replaced
-  const viteInline = (import.meta as any)?.env?.VITE_GEMINI_API_KEY as string | undefined;
-  if (viteInline && typeof viteInline === 'string') return viteInline;
-  // Fallback to runtime-provided values (useful in demos or when set via UI)
-  try {
-    if (typeof window !== 'undefined') {
-      const fromLS = window.localStorage?.getItem('GEMINI_API_KEY');
-      if (fromLS && fromLS.trim()) return fromLS.trim();
-      const fromGlobal: any = (window as any).__REBLD_GEMINI_API_KEY__;
-      if (fromGlobal && typeof fromGlobal === 'string') return fromGlobal;
-    }
-  } catch {}
+  // SECURITY: In production builds, never expose API key to frontend
+  // Scripts can still use this by setting env vars explicitly
+  if (typeof window !== 'undefined') {
+    // Browser context - should use backend actions instead
+    console.warn('[SECURITY] Frontend AI operations deprecated. Use Convex actions instead (api.ai.*)');
+    return undefined;
+  }
+
+  // Node.js context (scripts only) - allow env var access
+  const envKey = process.env.GEMINI_API_KEY;
+  if (envKey && typeof envKey === 'string') return envKey;
+
   return undefined;
 };
 

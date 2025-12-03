@@ -8,14 +8,12 @@ import { Card, CardHeader, CardContent, CardFooter, CardTitle, CardDescription }
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { IntensityBadge } from '../components/ui/intensity-badge';
-import { NotificationSkeleton } from '../components/ui/skeleton';
+// NotificationSkeleton removed - was causing layout shift when notifications query resolved
 import { cn } from '../lib/utils';
 import { calculateWorkoutIntensity, estimateCalories, getWorkoutType } from '../lib/workoutUtils';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { XMarkIcon } from '../components/icons';
-import { usePullToRefresh } from '../hooks/usePullToRefresh';
-import { PullToRefreshIndicator } from '../components/ui/PullToRefreshIndicator';
 
 /* ═══════════════════════════════════════════════════════════════
    HOMEPAGE - Phase 9.4 Page Redesign
@@ -438,10 +436,10 @@ const DaySelectorButton: React.FC<DaySelectorButtonProps> = ({
             aria-selected={isSelected}
             aria-label={`${shortDay}${hasExercises ? ', workout day' : ', rest day'}${isToday ? ', today' : ''}`}
             className={cn(
-                // Base - iPhone touch target compliant
-                "relative flex-shrink-0",
-                "min-w-[52px] min-h-[var(--height-button)]",
-                "px-[var(--space-3)] py-[var(--space-2-5)]",
+                // Base - iPhone touch target compliant, flex to fill available space
+                "relative flex-1",
+                "min-h-[var(--height-button)]",
+                "py-[var(--space-2-5)]",
                 "rounded-[var(--radius-xl)]",
                 "font-[var(--weight-semibold)] text-[var(--text-sm)]",
                 "transition-all duration-[var(--duration-fast)] ease-[var(--ease-default)]",
@@ -535,19 +533,6 @@ export default function HomePage({ plan, onStartSession, onQuickStartSession, on
     const [selectedDayIndex, setSelectedDayIndex] = useState(todayIndex);
     const daySelectorRef = useRef<HTMLDivElement>(null);
     const dayButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
-
-    // Pull-to-refresh
-    const handleRefresh = async () => {
-        if (onRefreshPlan) {
-            await onRefreshPlan();
-        }
-        // Small delay for better UX
-        await new Promise(resolve => setTimeout(resolve, 500));
-    };
-
-    const { pullDistance, isRefreshing, isTriggered } = usePullToRefresh({
-        onRefresh: handleRefresh,
-    });
 
     const weightKg = useMemo(() => {
         const w = userProfile?.bodyMetrics?.weight;
@@ -643,25 +628,20 @@ export default function HomePage({ plan, onStartSession, onQuickStartSession, on
             .length > 0;
 
     return (
-        <>
-            {/* Pull-to-refresh indicator */}
-            <PullToRefreshIndicator
-                distance={pullDistance}
-                isTriggered={isTriggered}
-                isRefreshing={isRefreshing}
-            />
-
             <div className={cn(
                 "w-full max-w-lg mx-auto",
                 "px-[var(--space-4)]",
-                "pt-[max(var(--space-4),env(safe-area-inset-top))]",
-                "pb-[calc(var(--height-tab-bar)+var(--space-6)+env(safe-area-inset-bottom))]",
-                "animate-fade-in flex-1 flex flex-col"
+                "flex flex-col",
+                "h-screen" // Full viewport height
             )}>
                 {/* ─────────────────────────────────────────────────────────────
-                    HEADER
+                    HEADER - Fixed at top, right below Dynamic Island
                    ───────────────────────────────────────────────────────────── */}
-            <header className="mb-[var(--space-5)] sm:mb-[var(--space-6)]">
+            <header className={cn(
+                "pt-[env(safe-area-inset-top)]", // Tight to Dynamic Island
+                "pb-[var(--space-2)]",
+                "flex-shrink-0"
+            )}>
                 <div className="flex items-center justify-between mb-[var(--space-3)] sm:mb-[var(--space-4)]">
                     <div className="space-y-[var(--space-1)]">
                         {/* Logo */}
@@ -688,25 +668,17 @@ export default function HomePage({ plan, onStartSession, onQuickStartSession, on
                 </div>
 
                 {/* ─────────────────────────────────────────────────────────────
-                    DAY SELECTOR
+                    DAY SELECTOR - Responsive grid, no scrolling
                    ───────────────────────────────────────────────────────────── */}
-                <div className="relative py-[var(--space-2)] -mx-[var(--space-4)] px-[var(--space-4)]">
-                    {/* Fade gradients */}
-                    <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-[var(--bg-primary)] to-transparent pointer-events-none z-10" />
-                    <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-[var(--bg-primary)] to-transparent pointer-events-none z-10" />
-
-                    <div
-                        ref={daySelectorRef}
-                        className={cn(
-                            "flex gap-[var(--space-1-5)]",
-                            "overflow-x-auto scroll-smooth",
-                            "py-[var(--space-2)] overflow-visible",
-                            "hide-scrollbar"
-                        )}
-                        style={{ WebkitOverflowScrolling: 'touch' }}
-                        role="tablist"
-                        aria-label="Select workout day"
-                    >
+                <div
+                    ref={daySelectorRef}
+                    className={cn(
+                        "flex justify-between gap-[var(--space-1)]",
+                        "py-[var(--space-2)]"
+                    )}
+                    role="tablist"
+                    aria-label="Select workout day"
+                >
                         {weeklyPlan.map((day, index) => (
                             <DaySelectorButton
                                 key={index}
@@ -720,20 +692,25 @@ export default function HomePage({ plan, onStartSession, onQuickStartSession, on
                                 buttonRef={(el) => { dayButtonRefs.current[index] = el; }}
                             />
                         ))}
-                    </div>
                 </div>
             </header>
 
             {/* ─────────────────────────────────────────────────────────────
-                MAIN CONTENT
+                MAIN CONTENT - Only this area scrolls
                ───────────────────────────────────────────────────────────── */}
-            <main className="flex-1 space-y-[var(--space-3)]">
-                {/* Notification loading skeleton */}
-                {notifications === undefined && userId && (
-                    <NotificationSkeleton />
+            <main
+                className={cn(
+                    "flex-1 min-h-0", // min-h-0 is critical for flex children to scroll
+                    "overflow-y-auto overflow-x-hidden",
+                    "space-y-[var(--space-3)]",
+                    "pb-[calc(var(--height-tab-bar)+env(safe-area-inset-bottom)+120px)]", // Extra space to scroll content above navbar
+                    "-mx-[var(--space-4)] px-[var(--space-4)]" // Extend scroll area to edges
                 )}
-
-                {/* Buddy notification banner */}
+                style={{
+                    WebkitOverflowScrolling: 'touch' // iOS momentum scrolling
+                }}
+            >
+                {/* Buddy notification banner - NO skeleton to avoid layout shift */}
                 {notifications && notifications.length > 0 && (
                     <div className={cn(
                         "mb-[var(--space-4)]",
@@ -912,6 +889,5 @@ export default function HomePage({ plan, onStartSession, onQuickStartSession, on
                 )}
             </main>
         </div>
-        </>
     );
 }
